@@ -1,0 +1,66 @@
+### Main objective of the project : Create a model to predict the number of passengers per flight.
+Additionnal aggregation may be expected:
+- Terminal 
+- Control zone : What is this exactly?
+- per hour
+- per day
+
+
+
+### Mar 24/03 ###
+1. Data cleaning: identify which features are relevant to train our model.
+2. Check features: Get some information about unknown features, what are they? are they usefull? description? Type of data?
+3. Get the data: use the script provided by Aristide to query the database and extract the needed data.
+4. External data addition : use external data sources to complete our dataset. The external data sources are for now:
+        - Scholar calendar and public holidays. 
+        - Meteo and climat data
+
+        => Use of timestamp column to merge the data -> define the column to use for the merge. (cf. LTScheduledDatetime or LTBlockDatetime)
+        The scheduled time is more relevant (LTScheduledDatetime) => it is impossible to know the real Datetime before the real event happening, it can't be used to make prediction.
+        The weather predictions must be linked to a scheduled datetime as reference.
+        Same for Scholar calendar and public holidays.
+
+        Nt: If the scholar calendar have to be renewed on a yearly basis, the weather data must be actualized in real time or either on an hourly basis.
+        => use of a Airflow DAG to get the data using an API.
+            -> Define the python code to do the API call for each data source
+            -> use Airflow to schedule the code execution (+ data cleaning and insertion our DB)
+
+5. Model implementation: Identify the "Label" column ("NbPax" or "NbPaxTotal"). Write a script to divide our Dataframe into Train/Validation/Test. 
+    Note: important to split considering chronoligical order => Use the past data to predict future ones (or at least recent ones).
+
+
+TO DO:
+- Query the data : export it to csv and visualize it using data Wrangler (Ahmed) DONE
+- Meteo & climat data hourly basis (using API) from meteo.data.gouv.fr + cleaning (feature selections) (Baptiste)   DONE
+- Data format of Scholar calendar and public holidays data (ref. as Holidays data from now on) to suit the main dataset format. (feature "LTScheduledDatetime") - (Thibault) DONE
+- Updating data profile (dataset exploration and report) => to help to determine useful features (Louis)    
+
+
+Project architecture:
+M1_CHALLENGE_ST_EXUPERY
+    |_ .venv
+    |_ config: contains the config file with our credentials
+    |_ data
+        |_ contains:
+                - downloaded data: from Bigquery, and external sources
+                - preprocessed data
+                - final dataset: ready for training
+                - metadata of the Airport data
+    |_ scripts:
+        |_ data_preparation: contains all the python script to load the data, preprocess, merge, and transformations.
+        |_ training: the scripts used to split data sample and train the models.
+    |_ README.md : the main file of the project, describing our work.
+        
+
+
+Order of execution:
+1. data_load.py 
+2. get_holidays.py
+3. get_weather.py  (Wait Baptiste for it)
+4. data_preprocessed.py  (Complete with Baptiste's code for the weather data preprocessing)
+5. data_enrichment.py
+
+
+Warning : Before sending the last dataset to the training part, be sure that the index columns are removed ('unamed 1' or other column like this).
+
+###

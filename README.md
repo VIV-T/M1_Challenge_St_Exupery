@@ -5,3 +5,4 @@
 - bigquery
 - requests
 - pandas 
+- pandas_gbq

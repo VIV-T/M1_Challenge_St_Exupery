@@ -1,0 +1,137 @@
+import os
+from google.cloud import bigquery
+import pandas as pd
+import pandas_gbq
+
+
+# ------------- Global variable -------------
+
+# column_list = """
+#     IdMovement,
+#     IdPkgStand,
+#     IdTraficType,
+#     IdIrregularityCode,
+#     IdRunway,
+#     IdAircraftType,
+#     IdBusinessUnitType,
+#     IdBusContactType,
+#     IdTerminalType,
+#     IdDelayTypeDOPS,
+#     IdBagStatusDelivery,
+#     IdDelayMainReasonSubcode,
+#     NbFlight,
+#     airlineOACICode,
+#     SysStopover,
+#     AirportOrigin,
+#     AirportPrevious,
+#     ServiceCode,
+#     FlightNumberNormalized,
+#     Counter,
+#     NbCounter,
+#     Conveyor,
+#     NbConveyor,
+#     LTEstimateDatetime,
+#     LTCancellationDatetime,
+#     LTScheduledDatetime,
+#     LTBlockDatetime,
+#     LTRunwayDatetime,
+#     LTFirstBagDeliveryDatetime,
+#     LTLastBagDeliveryDatetime,
+#     LTCtGInitialDatetime,
+#     LTCtGDynamicDatetime,
+#     LTCtGDisplayDatetime,
+#     TaxiDurationMinutes,
+#     Direction,
+#     Registration,
+#     Terminal,
+#     SysTerminal,
+#     Gate,
+#     GateGroup,
+#     PkgAircraft,
+#     Runway,
+#     BusRotationSchedule,
+#     BusRotationActual,
+#     BusCauseModif,
+#     Pkg,
+#     Airbridge,
+#     NbAirbridge,
+#     NbOfSeats,
+#     NbPax,
+#     NbPaxHTransit,
+#     NbPaxTransit,
+#     NbPaxConnecting,
+#     NbPaxTotal,
+#     flight_with_pax,
+#     OzionPHMRPaxTransit,
+#     OzionPHMRPaxArrival,
+#     OzionPHMRPaxDeparture,
+#     OzionPHMRPaxCancel,
+#     OzionNbReservations,
+#     PxScansCKN,
+#     PxScansDBA,
+#     PxScansCPF,
+#     PxScansPIF
+# """
+
+
+column_list = """
+LTScheduledDatetime,
+LTBlockDatetime
+"""
+
+additional_condition = """
+ORDER BY LTScheduledDatetime ASC
+"""
+
+
+
+# ------------- Utils -------------
+
+def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, service_account_key_path: str) -> pd.DataFrame:
+    """
+    Execute a choosen query on our BigQuery table and save the result into a pd.DataFrame and then a csv file.
+
+    Args:
+        project_id (str): L'ID du projet GCP.
+        dataset_id (str): L'ID du dataset BigQuery.
+        table_id (str): L'ID de la table BigQuery.
+        service_account_key_path (str): Le chemin vers le fichier JSON de la clé du compte de service.
+    """
+    try:
+        # Configure les identifiants du compte de service
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_key_path
+
+        # Construit la référence complète de la table
+        table_ref = f"`{project_id}.{dataset_id}.{table_id}`"
+
+        # Construit la requête SQL
+        query = f"SELECT {column_list} FROM {table_ref}  {additional_condition} LIMIT 10" 
+
+        
+        # Query execution using "pandas_gbq".
+        print(f"Query execution: \n{query}\n")
+        df_res = pd.DataFrame(pandas_gbq.read_gbq(query, project_id=project_id))
+
+        return df_res
+
+    except Exception as e:
+        print(f"Une erreur est survenue: {e}")
+        return pd.DataFrame()
+
+
+# ------------- Script configuration and execution -------------
+if __name__ == "__main__":
+    YOUR_PROJECT_ID = "va-sdh-adl-staging"
+    YOUR_DATASET_ID = "aero_insa"
+    YOUR_TABLE_ID = "mouvements_aero_insa"
+    YOUR_SERVICE_ACCOUNT_KEY_PATH = "config/va-sdh-adl-staging.json"
+
+    df_res = query_bigquery_table(
+        project_id=YOUR_PROJECT_ID,
+        dataset_id=YOUR_DATASET_ID,
+        table_id=YOUR_TABLE_ID,
+        service_account_key_path=YOUR_SERVICE_ACCOUNT_KEY_PATH
+    )
+
+    print(df_res)
+    df_res.to_csv("data/main.csv", encoding='utf-8')
