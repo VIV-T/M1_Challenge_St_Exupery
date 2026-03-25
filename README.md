@@ -5,3 +5,6 @@
 - bigquery
 - requests
 - pandas 
+- pandas_gbq
+- tqdm
+

@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 
-def get_calendar_dataframe():
+def get_calendar_dataframe() -> pd.DataFrame:
     # 1. Scholar calendar
     url_v = "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records"
     params_v = {
@@ -51,10 +51,11 @@ def get_calendar_dataframe():
 
     except Exception as e:
         print(f"Error : {e}")
-        return None
+        return pd.DataFrame()
 
 # Exécution et affichage
 df_resultat = get_calendar_dataframe()
+df_resultat.to_csv("data/holidays.csv", encoding='utf-8')
 
 if df_resultat is not None:
     print(f"Number of results: {len(df_resultat)}")
