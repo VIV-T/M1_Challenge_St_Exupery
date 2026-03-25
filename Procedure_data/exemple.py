@@ -19,7 +19,7 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
         client = bigquery.Client(project=project_id)
 
         # Construit la référence complète de la table
-        table_ref = f"`{project_id}.{dataset_id}.{table_id}`"
+        table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
         # Construit la requête SQL
         query = f"SELECT * FROM {table_ref} LIMIT 10" 
@@ -35,6 +35,7 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
         for row in rows:
             print(row)
 
+        
         print(f"\nRequête terminée. {rows.total_rows} lignes récupérées.")
 
     except Exception as e:
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     YOUR_PROJECT_ID = "va-sdh-adl-staging"
     YOUR_DATASET_ID = "aero_insa"
     YOUR_TABLE_ID = "mouvements_aero_insa"
-    YOUR_SERVICE_ACCOUNT_KEY_PATH = "config/va-sdh-adl-staging.json"
+    YOUR_SERVICE_ACCOUNT_KEY_PATH = "va-sdh-adl-staging.json"
 
     query_bigquery_table(
         project_id=YOUR_PROJECT_ID,
