@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # print(len(df_weather_hourly_2))
     df_weather_hourly = concat_data(df_weather_hourly_1, df_weather_hourly_2)
     print(f"Weather dataset created with {len(df_weather_hourly)} rows.")
-    df_weather_hourly.to_csv(output_file)
+    df_weather_hourly.to_csv(output_file, encoding='utf-8', index=False)
     print("Weather dataset saved in weather.csv")
 
     
