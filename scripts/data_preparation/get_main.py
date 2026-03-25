@@ -7,76 +7,25 @@ import pandas_gbq
 # ------------- Global variable -------------
 
 column_list = """
-IdMovement,
-IdPkgStand,
-IdTraficType,
-IdIrregularityCode,
-IdRunway,
-IdAircraftType,
-IdBusinessUnitType,
-IdBusContactType,
-IdTerminalType,
-IdDelayTypeDOPS,
-IdBagStatusDelivery,
-airlineOACICode,
-SysStopover,
-AirportOrigin,
-AirportPrevious,
-ServiceCode,
-FlightNumberNormalized,
-NbConveyor,
-LTEstimateDatetime,
-LTCancellationDatetime,
-LTScheduledDatetime,
-LTBlockDatetime,
-LTScheduledTime,
-LTExternalDatetime,
-LTExternalDate,
-LTExternalTime,
-LTRunwayDatetime,
-DelayHBLDurationMinutes,
-TaxiDurationMinutes,
-Direction,
-Terminal,
-SysTerminal,
-Gate,
-GateGroup,
-PkgAircraft,
-Runway,
-NbAirbridge,
-ScheduleType,
-NbOfSeats,
-NbPax,
-NbPaxHTransit,
-NbPaxTransit,
-NbPaxConnecting,
-NbPaxTotal,
-flight_with_pax,
-OzionPHMRPaxTransit,
-OzionPHMRPaxArrival,
-OzionPHMRPaxDeparture,
-OzionPHMRPaxCancel,
-OzionNbReservations,
-OzionNbMissions,
-PxAvgTimeBetweenCheckingPIF,
-PxAvgTimeBetweenPIFSOBT,
-PxAvgTimeBetweenPIFCtG,
-PxAvgDwellTime,
-PxAvgStrictDwelltime,
-PxAvgTimeBetweenCtGGate,
-PxAvgTimeBetweenCtGSOBT,
-PxAvgTimeInTerminal,
-PxScansCKN,
-PxScansDBA,
-PxScansCPF,
-PxScansAccPIF,
-PxScansPIF,
-PxScansRX,
-PxScansGAT,
-PxScansSalonConfluence,
-PxScansSalonMontblanc
-"""
-
+    IdTraficType,
+    IdAircraftType,
+    IdBusinessUnitType,
+    SysStopover,
+    AirportOrigin,
+    AirportPrevious,
+    FlightNumberNormalized,
+    LTScheduledDatetime,
+    LTBlockDatetime,
+    Direction,
+    NbOfSeats,
+    NbPaxTotal, 
+    NbPaxTransit,
+    NbPaxConnecting,
+    flight_with_pax,
+    PxScansCKN,
+    PxScansPIF,
+    PxScansGAT
+    """
 
 additional_condition = """
 ORDER BY LTScheduledDatetime DESC
@@ -104,9 +53,16 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
         table_ref = f"`{project_id}.{dataset_id}.{table_id}`"
 
         # Construit la requête SQL
-        query = f"SELECT {column_list} FROM {table_ref}  {additional_condition} LIMIT 10" 
+        query = f"SELECT {column_list} FROM {table_ref}  {additional_condition}" 
 
-        
+        ### Way 1 to query the database.        
+        # # Initialise le client BigQuery
+        # client = bigquery.Client(project=project_id)
+        # query_job = client.query(query)
+        # # Récupère les résultats
+        # df_res = query_job.to_dataframe(create_bqstorage_client=False)
+
+        ### Way 2 to query the database. 
         # Query execution using "pandas_gbq".
         print(f"Query execution: \n{query}\n")
         df_res = pd.DataFrame(pandas_gbq.read_gbq(query, project_id=project_id))
@@ -133,4 +89,4 @@ if __name__ == "__main__":
     )
 
     print(df_res)
-    df_res.to_csv("data/main.csv", encoding='utf-8')
+    df_res.to_csv("data/main.csv", encoding='utf-8', index=False)

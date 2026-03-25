@@ -25,7 +25,7 @@ def get_calendar_dataframe() -> pd.DataFrame:
             data_list.append({
                 "start_date": v['start_date'][:10],
                 "end_date": v['end_date'][:10],
-                "name": v['description'],
+                "holidays_name": v['description'],
                 "type": "VACANCES"
             })
 
@@ -35,7 +35,7 @@ def get_calendar_dataframe() -> pd.DataFrame:
                 data_list.append({
                     "start_date": d,
                     "end_date": d, # Pour un jour férié, début = fin
-                    "name": nom,
+                    "holidays_name": nom,
                     "type": "JOUR FÉRIÉ"
                 })
         df = pd.DataFrame(data_list)
@@ -55,8 +55,8 @@ def get_calendar_dataframe() -> pd.DataFrame:
 
 # Exécution et affichage
 df_resultat = get_calendar_dataframe()
-df_resultat.to_csv("data/holidays.csv", encoding='utf-8')
+df_resultat.to_csv("data/holidays.csv", encoding='utf-8', index=False)
 
 if df_resultat is not None:
     print(f"Number of results: {len(df_resultat)}")
-    print(df_resultat.head(50)) # Affiche les 20 premières lignes
+    # print(df_resultat.head(50)) # Affiche les 50 premières lignes
