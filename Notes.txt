@@ -64,3 +64,31 @@ Order of execution:
 Warning : Before sending the last dataset to the training part, be sure that the index columns are removed ('unamed 1' or other column like this).
 
 ###
+
+
+
+
+
+
+### Mar 25/03 ###
+Two main objectives today:
+
+1. Data preparation:
+    |_ add weather data preparation pipeline (B. code)
+    |_ look for international holidays dataset (optional)
+    |_ have a deeper understanding of the main dataset structure -> choose the column to keep/ remove, understand the different time and keep only the relevant ones.
+
+2. Models:
+    |_ initialisation script: split train / test / Validation dataset.
+        |_ train-test split: follow the chronoligical order. 
+        |_ sample the validation dataset from the train dataset. 
+    |_ Try to run models: /!\ This is a regression problem, not a classification one.
+    |_ Create a script to analyze the 1st results
+
+
+3. Bonus
+    |_ implement automatization of API call (using Aiflow) => daily update of main and weather data + yearly update of the holidays data
+
+
+
+###

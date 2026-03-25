@@ -6,3 +6,5 @@
 - requests
 - pandas 
 - pandas_gbq
+- tqdm
+
