@@ -71,7 +71,7 @@ Warning : Before sending the last dataset to the training part, be sure that the
 
 
 ### Mar 25/03 ###
-Two main objectives today:
+Main objectives today:
 
 1. Data preparation:
     |_ add weather data preparation pipeline (B. code)
@@ -91,4 +91,22 @@ Two main objectives today:
 
 
 
+
+
+Progress:
+data preprocessing:
+    Huge progress -> feature selection almost complete (maybe have to detail the choices and be precise about why we choose to keep a column or to remove it).
+    Formating all the columns, except the ids and some date, the columns are now numerical (even the categorical ones) => Very important for o be able to use regression models.
+    Clean architecture and pipeline. Ready for automatization (Airflow).
+
+training:
+    First script of data preparation (split train / test / val)
+    Identification of possible models to use: XGBoost, and a pytorch RNN, see: https://docs.pytorch.org/docs/stable/generated/torch.nn.LSTM.html
+    First results ? 
+    XGBoost : RMSE = 0.2 sur dataset de test 
+    LSTM : probleme avec les 'Nan' 
+
+Answer from Aristide:
+    Got an email from Aristide, have to review it and note all the information provided.
+    Note: question him about the airport issue : destination = origin, wtf?
 ###

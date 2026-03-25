@@ -3,6 +3,8 @@ import numpy as np
 import os
 from pathlib import Path
 
+import utils.weather as wthr
+
 
 # ------------- Global variables -------------
 data_folder = os.path.join(Path(__file__).parent.parent.parent, "data")
@@ -34,7 +36,7 @@ def pre_process_holidays(data_old_filename, data_new_filename)-> None:
     data["end_date"] = pd.to_datetime(data["end_date"])
 
     all_dates = pd.date_range(start='2023-01-01', end='2026-03-01', freq='D')
-    df_final = pd.DataFrame({'date': all_dates})
+    df_final = pd.DataFrame({'holidays_date': all_dates})
 
 
     def find_period(current_date):
@@ -43,110 +45,21 @@ def pre_process_holidays(data_old_filename, data_new_filename)-> None:
                         (current_date <= data['end_date'])]
         
         if not match.empty:
-            return match['name'].values[0]
+            return match['holidays_name'].values[0]
         return None
 
     # Apply this function each line of the calendar
-    df_final['name'] = df_final['date'].apply(find_period)
-    df_final['holiday'] = df_final['name'].notnull().astype(int)
+    df_final['holidays_name'] = df_final['holidays_date'].apply(find_period)
+    df_final['holiday'] = df_final['holidays_name'].notnull().astype(int)
+    rmv_col_list = ['holidays_name']
+    df_final = df_final.drop(columns=rmv_col_list)
     
     # Save the new df
-    df_final.to_csv(data_new_filename, encoding='utf-8')
+    df_final.to_csv(data_new_filename, encoding='utf-8', index=False)
 
 
 
 ### Weather data ###
-def remove_missing_values(csv_path : str) -> pd.DataFrame:
-    """
-    Remove columns with missing values.
-    First the columns whose are empty. (100% NA).
-    Secondly the columns with more than 25% of missings values, except 3 columns
-    """
-
-    # remove columns with 100% of missing values
-    df = pd.read_csv(csv_path)
-    df_no_empty = df.dropna(axis=1, how='all')
-    removed_columns = set(df.columns) - set(df_no_empty.columns)
-    print(f"{len(removed_columns)} deleted columns (100% empty).")
-
-    # remove columns with > 25 % of missing values
-    threshold = int(len(df) * 0.75)
-    df_clean = df_no_empty.dropna(axis=1, thresh=threshold)
-    removed_columns = set(df_no_empty.columns) - set(df_clean.columns)
-    print(f"{len(removed_columns)} deleted columns (>25% empty).")
-
-    return df_clean
-
-
-def remove_bad_quality(df : pd.DataFrame) -> pd.DataFrame:
-    """
-    Each data point/column is assigned a quality code (e.g., T;QT):
-        9: Filtered data (the data has passed the initial filters/checks)
-        0: Protected data (the data has been definitively validated by the climatologist)
-        1: validated data (the data has been validated by an automated check or by the climatologist)
-        2: questionable data currently being verified (the data has been flagged as questionable by an automated check)
-        
-        We simply retain the valid data (with a quality code of 0, 1 or 9) and remove the columns with the quality code.
-    """
-
-    # Identify all data columns that have an associated “Q” column
-    quality_columns = [c for c in df.columns if 'Q' + c in df.columns]
-
-    for col in quality_columns:
-        col_q = 'Q' + col
-        
-        # Define the mask for “bad” data (data that is not 0, 1, or 9)
-        # Add fillna(2) to treat missing Q codes as “doubtful” as a precaution
-        invalid = ~df[col_q].fillna(2).isin([0, 1, 9])
-        
-        # Clear the column if the quality is poor
-        df.loc[invalid, col] = np.nan
-
-    # Completely remove all columns starting with Q
-    removed_columns = [c for c in df.columns if c.startswith('Q')]
-    df_clean = df.drop(columns=removed_columns)
-
-    return df_clean
-
-
-def remove_unnecesserary_columns(df : pd.DataFrame) -> pd.DataFrame :
-    """
-    Remove the columns that are not relevant.
-    """
-
-    columns_to_remove = [
-        "Unnamed: 0",
-        "NUM_POSTE",
-        "NOM_USUEL",
-        "LAT",
-        "LON",
-        "ALTI",
-        "HTN",
-        "HTX",
-        "HXI",
-        "HXY",
-        "HFXI3S",
-        "HUN",
-        "HUX",
-        "PMER",
-        "PSTAT",
-        "PMERMIN",
-        "CL",
-        "VV",
-        "DVV200",
-        "WW",
-        "W1",
-        "W2",
-        "STATUS_FXI3S",
-        "STATUS_DXI3S"
-    ]
-
-    df_clean = df.drop(columns=columns_to_remove)
-
-    return df_clean
-
-
-
 def pre_process_weather(data_old_filename:str, data_new_filename:str):
     """
     Function used to pre-processed the main dataset get from the Bigquery table.
@@ -155,10 +68,10 @@ def pre_process_weather(data_old_filename:str, data_new_filename:str):
         - data_old_filename: the filename to load the raw dataset.
         - data_new_filename: the filename to save the pre-processed dataset.
     """
-    df = remove_missing_values(data_old_filename)
-    df_1 = remove_bad_quality(df)
-    df_2 = remove_unnecesserary_columns(df_1)
-    df_2.to_csv(data_new_filename)
+    df = wthr.remove_missing_values(data_old_filename)
+    df_1 = wthr.remove_bad_quality(df)
+    df_2 = wthr.remove_unnecesserary_columns(df_1)
+    df_2.to_csv(data_new_filename, encoding="utf-8", index=False)
     print(f"Shape of the final weather dataset : {df_2.shape}")
     print(f"Preprocessed weather dataset saved in {data_new_filename}")
 
@@ -184,8 +97,52 @@ def pre_process_main(data_old_filename, data_new_filename)-> None:
     data["LTScheduledDatetime-hour-code"] = data['LTScheduledDatetime'].dt.strftime('%Y%m%d%H')
 
     ### Additional transformations and pre-processing to add HERE...
+    # flight_with_pax - Oui -> 1 , Non -> 0
+    data['flight_with_pax'] = data['flight_with_pax'].map({'Oui': 1, 'Non': 0})
 
-    data.to_csv(data_new_filename, encoding='utf-8')
+    # Direction - Arrivée -> 1 , Départ -> 0
+    data['Direction'] = data['Direction'].map({'Arrivée': 1, 'Départ': 0})
+
+
+    # SysStopover (destination) / AirportOrigin (escale) / AirportPrevious (origine)
+    # 1. Retrieve all airport codes in the dataset
+    cols_airports = ['SysStopover', 'AirportOrigin', 'AirportPrevious']
+    for col in cols_airports:
+        data[col] = data[col].fillna('UNKNOWN').astype(str)
+
+    # 2. Create the mapping dictionary (Code -> Index)
+    tous_les_codes = pd.unique(data[cols_airports].values.ravel())
+    airport_to_idx = {code: i for i, code in enumerate(tous_les_codes)}
+
+    # 3. Apply the same mapping to all three columns
+    for col in cols_airports:
+        data[col] = data[col].map(airport_to_idx)
+
+    # IdAircraftType (e.g Airbus 320)
+    # 1. Create a dictionary for aircraft type
+    unique_aircraft = data['IdAircraftType'].unique()
+
+    # 2. Create the mapping dictionary (Code -> Index)
+    aircraft_to_idx = {avion: i for i, avion in enumerate(unique_aircraft)}
+
+    # 3. Apply the mapping to the data
+    data['IdAircraftType'] = data['IdAircraftType'].map(aircraft_to_idx)
+
+    # Convert date for delay computation
+    data['LTScheduledDatetime'] = pd.to_datetime(data['LTScheduledDatetime'])
+    data['LTBlockDatetime'] = pd.to_datetime(data['LTBlockDatetime'])
+
+    # Delay computation
+    # WARNING : DATA LEAKAGE FOR THE FUTURE FLIGHT
+    data['Delay_Minutes'] = (data['LTBlockDatetime'] - data['LTScheduledDatetime']).dt.total_seconds() / 60
+    data['Is_Delayed'] = (data['Delay_Minutes'] > 15).astype(int) #WARNING : 0 means "no delay and missing value"
+
+    # removed_columns = ["FlightNumberNormalized", "LTScheduledDatetime", "LTBlockDatetime", 
+    #                 "LTScheduledDatetime-day", "LTScheduledDatetime-hour-code"]
+
+    # data = data.drop(columns=removed_columns)
+
+    data.to_csv(data_new_filename, encoding='utf-8', index=False)
 
 
 
