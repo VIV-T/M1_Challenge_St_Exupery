@@ -54,10 +54,10 @@ M1_CHALLENGE_ST_EXUPERY
 
 
 Order of execution:
-1. data_load.py 
+1. get_main.py 
 2. get_holidays.py
-3. get_weather.py  (Wait Baptiste for it)
-4. data_preprocessed.py  (Complete with Baptiste's code for the weather data preprocessing)
+3. get_weather.py 
+4. data_preprocessed.py  
 5. data_enrichment.py
 
 
@@ -90,23 +90,69 @@ Main objectives today:
     |_ implement automatization of API call (using Aiflow) => daily update of main and weather data + yearly update of the holidays data
 
 
-
-
-
 Progress:
-data preprocessing:
-    Huge progress -> feature selection almost complete (maybe have to detail the choices and be precise about why we choose to keep a column or to remove it).
-    Formating all the columns, except the ids and some date, the columns are now numerical (even the categorical ones) => Very important for o be able to use regression models.
-    Clean architecture and pipeline. Ready for automatization (Airflow).
+    data preprocessing:
+        Huge progress -> feature selection almost complete (maybe have to detail the choices and be precise about why we choose to keep a column or to remove it).
+        Formating all the columns, except the ids and some date, the columns are now numerical (even the categorical ones) => Very important for o be able to use regression models.
+        Clean architecture and pipeline. Ready for automatization (Airflow).
 
-training:
-    First script of data preparation (split train / test / val)
-    Identification of possible models to use: XGBoost, and a pytorch RNN, see: https://docs.pytorch.org/docs/stable/generated/torch.nn.LSTM.html
-    First results ? 
-    XGBoost : RMSE = 0.2 sur dataset de test 
-    LSTM : probleme avec les 'Nan' 
+    training:
+        First script of data preparation (split train / test / val)
+        Identification of possible models to use: XGBoost, and a pytorch RNN, see: https://docs.pytorch.org/docs/stable/generated/torch.nn.LSTM.html
+        First results ? 
+        XGBoost : RMSE = 0.2 sur dataset de test 
+        LSTM : probleme avec les 'Nan' 
 
-Answer from Aristide:
-    Got an email from Aristide, have to review it and note all the information provided.
-    Note: question him about the airport issue : destination = origin, wtf?
+    Answer from Aristide:
+        Got an email from Aristide, have to review it and note all the information provided.
+        Note: question him about the airport issue : destination = origin, wtf?
+###
+
+
+### 26/03 ###
+Daily objectives:
+- Data exploration : correlation calculation between features => better selection of useful features -> better model performances? (RMSE)
+    - Deletion of NAN col (with missing values) => to allow to run the pytorch model (LSTM). - Or find a solution to replace missing values by a coherent one.
+
+- Try to improve the performances of the XGBoost model (hyperaprams, data processing, ...)
+
+- Try to run LSTM (pytorch), return metrics (like RMSE) for performances analysis
+
+- Data profiling: complete overview of the data
+    - Need of deeply understanding the data, the stakes and it structure (missing values, basic stats, ...)
+    - Review of the challenge topic (paper provided) to link column to different aspect of the project:
+            - NbPax prediction
+            - Stream management and logistic improvement
+            - Environemental and Soxial considerations
+
+- Research other model
+
+
+
+
+Issues:
+- origin = destination for all the dataset ???
+- management of the temporal aspect: Model cannot access to all the features for the predictions, example:
+        - to predict the number of passengers of the next days, you don't have the meteo, the Pax number at check in or Scan.
+        => Most important aspect to find a solution + how to still have good predictions ???
+
+- sometimes NbPaxTotal > NbOfSeats ??? => why 
+- prediction of the occupation rate instead of the number of passenger => reversible linear operation.
+
+
+
+# Programme de l'aprem:
+- Code division des dates DONE
+- Finir preprocessing des données pour LSTM     DONE (main data) 
+- Holidays dataset => chercher dataset international => creation d'un binary pour savoir si la zone geographique de l'aeroport de depart est en vacances ou pas.
+        => La liste des pays des aeroports avec des vols en provenances de Lyon St Exupery est limité
+        => Besoin des dates de zone A, B, et C en fonction de l'aeroport de depart pour les vols nationaux.
+        (Vacances + Jours férié)
+- Créer binaire pour les week end => (Hypothese) influence le nombre de passager -> en semaine, les passagers business sont plus important que le week-end ou des familles ou ami sont plus suceptible de prendre l'avion.
+- BONUS: Base de données d'evenement locaux et internationaux (ex: concert, fetes des lumieres, ou conflit au moyen orient peuvent influencer les preicitions)
+
+
+Objectif: Faire tourner LSTM + 1st results et analysis.
+
+=> autres modeles de time series.
 ###
