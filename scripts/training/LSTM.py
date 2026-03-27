@@ -16,13 +16,10 @@ batch_size = 32  # Taille des lots pour le DataLoader
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Chargement et nettoyage rapide
-filename = os.path.join(Path(__file__).parent.parent.parent, "data", 'dataset_training.csv')
+filename = os.path.join(Path(__file__).parent.parent.parent, "data", 'main_new_preprocessed.csv')
 df = pd.read_csv(filename, encoding='utf-8')
-df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime'])
-df = df[df['LTScheduledDatetime'].dt.date < datetime.now().date()- timedelta(days=1)].sort_values('LTScheduledDatetime')
-df = df.dropna(subset=[target_col]).reset_index(drop=True)
 
-print(df.isnull().sum().sum())
+
 
 # --- 2. PREPARATION DES DONNÉES ---
 train_set, test_set = train_test_split(df, test_size=0.10, shuffle=False)
@@ -55,10 +52,20 @@ def create_sequences(data_x, data_y, window):
 X_train_seq, y_train_seq = create_sequences(train_x_sc, train_y_sc, window_size)
 X_test_seq, y_test_seq = create_sequences(test_x_sc, test_y_sc, window_size)
 
+
+
+
+
 # --- 3. DATALOADERS ---
 # Le DataLoader permet de mélanger les données et de ne pas charger tout le dataset d'un coup
 train_dataset = TensorDataset(X_train_seq, y_train_seq)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+
+
+
+
+
 
 # --- 4. MODÈLE LSTM AVEC BATCH NORMALIZATION ---
 class PassengerLSTM(nn.Module):
@@ -115,6 +122,9 @@ for epoch in range(epochs):
     
     if (epoch + 1) % 10 == 0:
         print(f"Epoch [{epoch+1}/{epochs}], Loss Moyenne: {epoch_loss/len(train_loader):.6f}")
+
+
+
 
 # --- 6. ÉVALUATION FINALE ---
 model.eval()
