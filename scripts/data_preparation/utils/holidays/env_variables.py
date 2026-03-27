@@ -1,5 +1,7 @@
 START_DATE = "2023-01-01"
 END_DATE = "2027-12-31"
+FEATURE_NAME_AIRPORT_CODE = "AirportPrevious"
+
 
 FR_ZONES = [
     "Zone A", "Zone B", "Zone C", 
@@ -8,6 +10,7 @@ FR_ZONES = [
 
 # --- MAPPING ADMINISTRATIF ---
 # Associe un nom d'aéroport à l'entité reconnue par l'Éducation Nationale --- # Hard coded
+# Possible to add other cities if needed.
 FR_MAPPING_ACADEMIE = {
     # --- CORSE ---
     "Figari": "Corse",

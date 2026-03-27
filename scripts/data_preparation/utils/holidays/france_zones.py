@@ -4,11 +4,15 @@ import time
 from utils.holidays.env_variables import FR_MAPPING_ACADEMIE
 
 # --- CONFIGURATION ---
+
 API_URL = "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records"
 CACHE_FILE = 'cache_vacances.json'
 
 
-# --- FONCTIONS DE GESTION DU CACHE ---
+
+# --- Cache management functions ---
+# To avoid to recall the API for each run - can be heavy for no reason.
+
 def load_cache():
     try:
         with open(CACHE_FILE, 'r', encoding='utf-8') as f:
@@ -20,26 +24,28 @@ def save_cache(cache):
     with open(CACHE_FILE, 'w', encoding='utf-8') as f:
         json.dump(cache, f, ensure_ascii=False, indent=4)
 
-# --- NETTOYAGE ET APPEL API ---
+
+
+# --- CLEANING and API CALL ---
+
 def get_clean_name(raw_name):
-    # 1. On isole la partie avant le '/'
+    # We only keep the first name -> enought to get the holiday zone.
     name = raw_name.split('/')[0].strip()
     
-    # 2. Cas prioritaires (Hardcoding pour les noms complexes)
+    # 2. Hard code for exceptions
+    # /!\ Code weakness
     if "Figari" in name: return "Figari"
     if "Pointe" in name: return "Pointe-a-Pitre"
     if "La Rochelle" in name: return "La Rochelle"
     
-    # 3. Normalisation des 'St ' en 'Saint-'
+    # Normalisation of 'St ' to 'Saint-'
     if name.startswith("St "):
         name = name.replace("St ", "Saint-")
         
-    # 4. Pour les autres, on ne garde que le premier mot AVANT un espace ou un tiret
-    # sauf si c'est un nom composé déjà mappé (ex: Saint-Louis)
+    # Main cleaning case
     clean_city = name.split(' ')[0].split('-')[0].strip()
     
-    # Si le nom nettoyé est juste "Saint", on reprend le nom complet avant le '/'
-    # pour éviter le bug Saint-Pierre-et-Miquelon
+    # 'Saint' exception: get the full name to avoid bug.
     if clean_city == "Saint":
         clean_city = name.split(' ')[0].strip()
         
@@ -49,12 +55,12 @@ def get_clean_name(raw_name):
 def fetch_holiday_status(raw_city, cache):
     clean_name = get_clean_name(raw_city)
     
-    # Vérification Redirection + Cache
+    # Cache verification and redirection
     target = FR_MAPPING_ACADEMIE.get(clean_name, clean_name)
     if target in cache:
         return cache[target]
 
-    # Requête API Strict (=) pour éviter les faux positifs (ex: Saint-Pierre-et-Miquelon)
+    # API call 
     params = {
         "where": f'(location = "{target}" OR zones = "{target}")',
         "order_by": "start_date ASC",
@@ -67,7 +73,7 @@ def fetch_holiday_status(raw_city, cache):
         
         if data.get('total_count', 0) > 0:
             res = data['results'][0]
-            # Priorité à la Zone (A, B, C), sinon la Localisation (Corse, DOM)
+            # Zone managment or localization for island and non-metropolitan territory
             zone = res.get('zones') if res.get('zones') else res.get('location')
             status = {
                 "zone": zone,
@@ -78,12 +84,15 @@ def fetch_holiday_status(raw_city, cache):
     except Exception as e:
         status = {"zone": "Erreur API", "is_holiday": "Inconnu"}
 
-    # Stockage et respect du serveur
+    # Save the cache
     cache[target] = status
     time.sleep(0.05) 
     return status
 
-# --- EXÉCUTION PRINCIPALE ---
+
+
+# --- Main Execution ---
+
 def get_zone_airports(data_list):
     cache = load_cache()
     results_zone = []

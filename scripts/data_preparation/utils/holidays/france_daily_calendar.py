@@ -11,7 +11,7 @@ def get_calendar_df():
     all_records = []
     
     for zone in FR_ZONES:        
-        # Requête pour récupérer toutes les vacances sur la période
+        # Query to get all the holiday period on a date range.
         params = {
             "where": f'(zones = "{zone}" OR location = "{zone}") '
                      f'AND end_date >= "{START_DATE}" '
@@ -27,18 +27,18 @@ def get_calendar_df():
             
             if data.get('total_count', 0) > 0:
                 for res in data['results']:
-                    # On crée une ligne par période de vacances
+                    # One record per holiday
                     record = {
                         "Zone_Ou_Region": zone,
                         "Description": res.get('description'),
                         "Date_Debut": res.get('start_date').split('T')[0],
                         "Date_Fin": res.get('end_date').split('T')[0],
                         "Annee_Scolaire": res.get('annee_scolaire'),
-                        "Population": res.get('population') # Utile pour distinguer Enseignants/Élèves
+                        "Population": res.get('population')
                     }
                     all_records.append(record)
             
-            # Petite pause pour respecter l'API
+            # Time break - Smooth API call
             time.sleep(0.1)
             
         except Exception as e:
@@ -54,19 +54,19 @@ def get_calendar_df():
 
 
 def get_calendar_scholar_holidays():
+    # Initialization & preprocessing
     df_periodes = get_calendar_df()
     df_periodes['Date_Debut'] = pd.to_datetime(df_periodes['Date_Debut'])
     df_periodes['Date_Fin'] = pd.to_datetime(df_periodes['Date_Fin'])
 
-    dates_range = pd.date_range(start="2023-01-01", end="2027-12-31", freq='D')
+    dates_range = pd.date_range(start=START_DATE, end=END_DATE, freq='D')
     df_daily = pd.DataFrame({'date': dates_range})
 
     for zone in FR_ZONES:
         col_name = f"{zone.replace(' ', '_')}"
         df_daily[col_name] = 0
 
-        # 4. Remplissage binaire (1 si la date est comprise entre Debut et Fin)
-        # On filtre les périodes correspondant à la zone actuelle
+        # Binary filling (0/1) if the date is in a holiday period.
         filtre_zone = df_periodes[df_periodes['Zone_Ou_Region'] == zone]
         
         for _, row in filtre_zone.iterrows():

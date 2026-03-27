@@ -1,11 +1,11 @@
 import pandas as pd
 import requests
 
-def add_school_holiday_international(df, date_col="LTScheduledDatetime-day", country_col="country"):
+def add_scholar_holiday_international(df, date_col="LTScheduledDatetime-day", country_col="country"):
     """Add school holiday information for international flights."""
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col])
-    df["IsSchoolHoliday"] = 0
+    df["IsScholarHolidays"] = 0
 
     for country in df[country_col].unique():
         country_data = df[df[country_col] == country]
@@ -75,4 +75,4 @@ def _mark_holidays_in_df(df, country, holidays, date_col, country_col):
             (df[date_col] <= end)
         )
         
-        df.loc[mask, "IsSchoolHoliday"] = 1
+        df.loc[mask, "IsScholarHolidays"] = 1

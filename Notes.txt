@@ -156,3 +156,31 @@ Objectif: Faire tourner LSTM + 1st results et analysis.
 
 => autres modeles de time series.
 ###
+
+
+
+
+### 27/03 ###
+Holidays preprocessing almost finished.
+To do :     DONE
+Manage the filter Arrival/Departure => 'Direction' feature. 
+If 'Direction' == "Arrivée" : 
+    AirportDeparture = 'AirportPrevious' or the associated variable.
+Else :
+    AirportDeparture = LYS (Lyon St Exupery code).
+
+
+Next steps:
+    - Add of B.'s preprocess (additional columns)
+    - Add of additional columns (ex: number of passenger on avg regarding the past 7 fly to the same destionation)
+    - Add of week end's column.
+    - Modify "cache_vacances.json" location of saving (in the code)
+    - Ask B. what's next (avoid git conflict and star to merge branch to centralized the work)
+
+
+
+
+
+
+
+###
