@@ -1,0 +1,12 @@
+bigquery
+requests
+pandas
+pandas_gbq
+tqdm
+scikit-learn
+xgboost
+torch
+torchvision
+torchaudio
+seaborn
+pandasql
