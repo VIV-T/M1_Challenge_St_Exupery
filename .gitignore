@@ -1,3 +1,5 @@
 /.venv/
 /config/
 /data/*.csv
+*.pyc
+*.DS_Store
