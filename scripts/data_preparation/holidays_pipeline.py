@@ -7,13 +7,14 @@ import requests
 from pathlib import Path
 from pandasql import sqldf
 import holidays
-from utils.holidays_france_zones import get_zone_airports
-from utils.holidays_france import pipeline_france
+from utils.holidays.france_pipeline import pipeline_france
+from utils.holidays.international_scholar_holidays import add_school_holiday_international
 
 
 ### Global variable
 data_folder = os.path.join(Path(__file__).parent.parent.parent, "data")
 filename = os.path.join(data_folder, "main.csv")
+CODE_LIST_FR = ["FR", "LF", "GP", "MQ", "RE"] # metroplitan codes + islands and extra-marine territories
 
 # data import and light preprocessing
 data = pd.read_csv(filename, encoding="utf-8")
@@ -120,46 +121,6 @@ def add_public_holidays(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def add_school_holiday_international(df, date_col="LTScheduledDatetime-day", country_col="country"):
-    df = df.copy()
-    df[date_col] = pd.to_datetime(df[date_col])
-    df["IsSchoolHoliday"] = 0
-
-    holidays_cache = {}
-
-    for country in df[country_col].unique():
-        df_country_idx = df[country_col] == country
-        df_country = df[df_country_idx]
-
-        start_date = df_country[date_col].min()
-        end_date = df_country[date_col].max()
-
-        url = "https://openholidaysapi.org/SchoolHolidays"
-        params = {
-            "countryIsoCode": country,
-            "validFrom": start_date.strftime("%Y-%m-%d"),
-            "validTo": end_date.strftime("%Y-%m-%d"),
-        }
-
-        holidays = requests.get(url, params=params).json()
-
-        print(holidays)
-        for h in holidays:
-            start = pd.to_datetime(h["startDate"])
-            end = pd.to_datetime(h["endDate"])
-
-            mask = (
-                (df[country_col] == country) &
-                (df[date_col] >= start) &
-                (df[date_col] <= end)
-            )
-
-            df.loc[mask, "IsSchoolHoliday"] = 1
-
-    return df
-
-
-
 
 
 if __name__ == '__main__' :
@@ -171,9 +132,9 @@ if __name__ == '__main__' :
 
 
     # To keep only French airports
-    code_list_fr = ["FR", "LF", "GP", "MQ", "RE"] # metroplitan codes + islands and extra-marine territories
-    data_france = df_merge[df_merge['country'].isin(code_list_fr)]
-    data_international = df_merge[~df_merge['country'].isin(code_list_fr)]
+    code_list_fr = CODE_LIST_FR
+    data_france = df_public_holidays[df_public_holidays['country'].isin(code_list_fr)]
+    data_international = df_public_holidays[~df_public_holidays['country'].isin(code_list_fr)]
 
     df_scholar_holdidays_international = add_school_holiday_international(df=data_international)
 
@@ -183,5 +144,6 @@ if __name__ == '__main__' :
     print(df_scholar_holdidays_international)
     # print(df_public_holidays)
     df_scholar_holdidays_france.to_csv('df_france.csv', encoding='utf-8')
+    df_scholar_holdidays_international.to_csv('df_international.csv', encoding='utf-8')
 
 
