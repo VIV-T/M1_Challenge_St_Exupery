@@ -1,0 +1,258 @@
+{
+    "Toulouse": {
+        "zone": "Zone C",
+        "is_holiday": "NON"
+    },
+    "Nantes": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Corse": {
+        "zone": "Corse",
+        "is_holiday": "NON"
+    },
+    "Strasbourg": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Besançon": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Poitiers": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Paris": {
+        "zone": "Zone C",
+        "is_holiday": "NON"
+    },
+    "Nancy-Metz": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Montpellier": {
+        "zone": "Zone C",
+        "is_holiday": "NON"
+    },
+    "Réunion": {
+        "zone": "Réunion",
+        "is_holiday": "NON"
+    },
+    "Aix-Marseille": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Rennes": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Lille": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Normandie": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Lyon": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Grenoble": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Nice": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "Bordeaux": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Guadeloupe": {
+        "zone": "Guadeloupe",
+        "is_holiday": "NON"
+    },
+    "Clermont-Ferrand": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Limoges": {
+        "zone": "Zone A",
+        "is_holiday": "NON"
+    },
+    "Amiens": {
+        "zone": "Zone B",
+        "is_holiday": "NON"
+    },
+    "LFPG": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFKB": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBD": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFKJ": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFKF": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFMN": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBZ": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFML": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBO": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRS": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRB": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRN": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRK": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBL": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBP": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBH": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBI": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFST": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFKC": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFLL": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFPO": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "FMEE": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFLY": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFLC": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFSB": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFLB": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFCR": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFMH": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFBT": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFLS": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFMT": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFSP": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFQQ": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "_MLH": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFOB": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRG": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFGJ": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFJL": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFMP": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFTH": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "LFRV": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    },
+    "TFFR": {
+        "zone": "Non trouvée",
+        "is_holiday": "NON"
+    }
+}
