@@ -1,66 +1,99 @@
-"""
-preprocessing.py — Core Data Cleaning & Normalization for Project Saint-Exupéry.
-
-This module handles the loading of the raw IATA dataset and performs
-the necessary technical filtering (technical flights, ferry travel, etc.)
-to isolate commercial passenger flows.
-"""
 import pandas as pd
 import os
+from google.cloud import bigquery
+from saint_ex.config import (
+    INFERENCE_START_DATE, LOAD_COLUMNS, 
+    USE_BIGQUERY, BQ_PROJECT, BQ_DATASET, BQ_TABLE, BQ_CREDS
+)
 
-def load_dataset(file_path):
-    """Loads and performs schema-level normalization on the airport dataset."""
+def load_dataset(file_path: str) -> pd.DataFrame:
+    """
+    Main ingestion orchestrator. Toggles between local CSV snapshot 
+    and live BigQuery production data based on configuration.
+    """
+    if USE_BIGQUERY:
+        return _load_from_bigquery()
+    
+    # Fallback to Local CSV
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Missing input dataset: {file_path}")
-        
-    print(f"Loading {file_path}...")
-    df = pd.read_csv(file_path, low_memory=False)
+         
+    print(f"Loading Local Snapshot: {file_path}...")
+    df = pd.read_csv(file_path, low_memory=False, usecols=LOAD_COLUMNS)
+    return _normalize_schema(df)
+
+def _load_from_bigquery() -> pd.DataFrame:
+    """
+    Live ingestion from BigQuery using standard REST transport.
+    Fetches the full ground-truth history including recent 2026 labels.
+    """
+    print(f"Syncing Live BigQuery Dataset: {BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}...")
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = BQ_CREDS
     
-    # Standardize time dimension
-    df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime'])
+    # Initialize Standard Client
+    client = bigquery.Client(project=BQ_PROJECT)
     
-    # ♿ PRM Column Mapping (FarmsNbPaxPHMR is the target for Travelers with Reduced Mobility)
+    # 📝 Authoritative Query to ensure consistent schema with CSV
+    cols_str = ", ".join(LOAD_COLUMNS)
+    query = f"SELECT {cols_str} FROM `{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`"
+    
+    # Fallback to REST (Storage API requires specific permissions not in SA)
+    df = client.query(query).to_dataframe()
+    return _normalize_schema(df)
+
+def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardizes types and filters technical operations to isolate commercial flow."""
+    # Standardize Chronological Index (Force ns precision for merge compatibility)
+    df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.tz_localize(None).astype('datetime64[ns]')
+    
+    # ♿ Standardize PRM Target
     if 'FarmsNbPaxPHMR' in df.columns:
         df['NbPRMTotal'] = pd.to_numeric(df['FarmsNbPaxPHMR'], errors='coerce').fillna(0)
     else:
         df['NbPRMTotal'] = 0
     
-    # Technical Flight Filter (Ferry, Crew, Technical stops)
+    # Filter Commercial Flows (Exclude Ferry/Technical/Non-Pax)
     initial_count = len(df)
-    df = df[~df['ServiceCode'].isin(['T', 'E', 'C', 'P', 'X'])].copy()
+    
+    # Strict Commercial Filter — Chapter IX Compliance
+    # Included: J (Scheduled), C (Charter), G (General), S (Scheduled Revenue), O (Contract Charter), L (Charter mixed)
+    # Excluded: T (Technical), E (Government), P (Positioning), X (Test), F (Freight), W (Military), R (Regional), etc.
+    mask = (
+        (df['ServiceCode'].isin(['J', 'S', 'C', 'G', 'O', 'L'])) & 
+        (df['IdBusinessUnitType'] == 1) &
+        (df['NbOfSeats'] > 0) &
+        (df['flight_with_pax'].fillna('Oui') == 'Oui')
+    )
+    df = df[mask].copy()
+    
+    # For Backtests, we only care about realized rows
+    if 'NbPaxTotal' in df.columns:
+        df = df[df['NbPaxTotal'] > 0].copy()
+        
     diff = initial_count - len(df)
     print(f"  Processed {len(df):,} commercial flights ({diff:,} ferry/technical filtered).")
     
-    # Normalize airline identifiers
+    # Initialize high-quality identifiers
     df['OperatorOACICodeNormalized'] = df['airlineOACICode'].fillna('UNKNOWN')
-    
     return df
 
-from saint_ex.config import INFERENCE_START_DATE
-
-def split_historical_inference(df, val_ratio=0.15):
-    """
-    Splits the full dataset into labeled (historical) and unlabeled (inference) pools.
-    Performs a chronological 85/15 split on labeled data for internal validation.
-    The cutoff is driven by INFERENCE_START_DATE in config.py.
-    """
-    # 🏁 Precise Snapshot Boundary from Configuration
-    snapshot_cutoff = INFERENCE_START_DATE
+def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15):
+    """Chronologically splits the dataset based on the configured INFERENCE_START_DATE."""
+    snapshot_cutoff = pd.to_datetime(INFERENCE_START_DATE)
     
     historical = df[df['LTScheduledDatetime'] < snapshot_cutoff].copy()
     inference  = df[df['LTScheduledDatetime'] >= snapshot_cutoff].copy()
     
-    # Chronological Validation (Last 15% of historical data)
     historical = historical.sort_values(by='LTScheduledDatetime')
     cutoff_idx = int(len(historical) * (1 - val_ratio))
     
     train = historical.iloc[:cutoff_idx].copy()
     val   = historical.iloc[cutoff_idx:].copy()
     
-    print("\nSplitting dynamic snapshot data...")
-    print(f"  Historical Training Range: {historical['LTScheduledDatetime'].min()} -> {historical['LTScheduledDatetime'].max()}")
+    print("\nSplitting dynamic data stream...")
+    print(f"  Training Range: {historical['LTScheduledDatetime'].min()} -> {historical['LTScheduledDatetime'].max()}")
     print(f"    - train     : {len(train):,}")
     print(f"    - validation: {len(val):,}")
-    print(f"  Inference Pool (Recent Blind Test): {len(inference):,}")
+    print(f"  Inference Pool: {len(inference):,}")
     
     return train, val, inference

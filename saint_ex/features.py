@@ -9,56 +9,52 @@ import numpy as np
 import pandas as pd
 import os
 import holidays
+from saint_ex.config import WEATHER_FILE, SCHOOL_CAL_FILE, CATEGORICAL_FEATURES, ALL_FEATURES
+
 try:
     import airportsdata
     AIRPORTS = airportsdata.load('IATA')
 except Exception:
     AIRPORTS = {}
 
-# --- External Data Signal Mapping ---
-WEATHER_FILE     = 'externals/weather_hubs.csv'
-SCHOOL_CAL_FILE  = 'externals/school_holidays.csv'
-WEATHER_DF       = pd.read_csv(WEATHER_FILE) if os.path.exists(WEATHER_FILE) else None
-SCHOOL_CAL       = pd.read_csv(SCHOOL_CAL_FILE) if os.path.exists(SCHOOL_CAL_FILE) else None
+# --- Cache External Data Objects ---
+WEATHER_DF = pd.read_csv(WEATHER_FILE) if os.path.exists(WEATHER_FILE) else None
+SCHOOL_CAL = pd.read_csv(SCHOOL_CAL_FILE) if os.path.exists(SCHOOL_CAL_FILE) else None
 
-# Standardize date objects for joining
-if WEATHER_DF is not None: WEATHER_DF['date'] = pd.to_datetime(WEATHER_DF['date']).dt.date
+if WEATHER_DF is not None: 
+    WEATHER_DF['date'] = pd.to_datetime(WEATHER_DF['date']).dt.date
 if SCHOOL_CAL is not None:
     SCHOOL_CAL['start'] = pd.to_datetime(SCHOOL_CAL['start']).dt.date
     SCHOOL_CAL['end'] = pd.to_datetime(SCHOOL_CAL['end']).dt.date
 
-def get_country(iata):
-    """Maps IATA codes to ISO country codes via airportsdata."""
+def _get_country(iata):
+    """Maps IATA codes to ISO country codes via airportsdata utility."""
     if not isinstance(iata, str): return None
     apt = AIRPORTS.get(iata)
     return apt['country'] if apt else None
 
-# --- Feature Configuration ---
-CATEGORICAL = [
-    'airlineOACICode', 'OperatorOACICodeNormalized', 'SysStopover',
-    'AirportOrigin', 'IdAircraftType', 'Terminal', 'ServiceCode',
-    'FuelProvider',
-]
-
-ALL_FEATURES = [
-    'NbOfSeats', 'NbConveyor', 'NbAirbridge',
-    'IdBusContactType', 'IdTerminalType', 'IdBagStatusDelivery',
-    'is_arrival', 'is_charter',
-    'temp_max_origin', 'precip_origin',
-    'temp_max_dest', 'precip_dest',
-    'is_school_holiday_zone_a', 'is_school_holiday_zone_b', 'is_school_holiday_zone_c',
-    'is_origin_holiday', 'is_destination_holiday',
-    *CATEGORICAL,
-    'year', 'month', 'week', 'dayofweek', 'hour', 'dayofyear',
-    'sin_hour', 'cos_hour', 'sin_month', 'cos_month',
-]
-
-def add_features(df):
-    """Orchestrates the transformation of raw flight logs into high-dimension features."""
+def add_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Main orchestrator for Project Saint-Exupéry feature engineering.
+    Sequentially enriches the dataset with temporal, external, and historical signals.
+    """
     df = df.copy()
-    dt = df['LTScheduledDatetime']
+    df['date'] = df['LTScheduledDatetime'].dt.date
     
-    # ⏱️ Temporal Cycles
+    # Sequential enrichment stages
+    df = _add_temporal_cycles(df)
+    df = _add_flight_attributes(df)
+    df = _add_external_signals(df)
+    df = _add_religious_surges(df)
+    df = _add_historical_lags(df)
+    
+    # Drop intermediate keys and columns
+    drop_cols = ['date', 'origin_iata', 'dest_iata', 'origin_country', 'dest_country', 'tight_key', 'eid_start']
+    return df.drop(columns=[c for c in drop_cols if c in df.columns], errors='ignore')
+
+def _add_temporal_cycles(df):
+    """Injects cyclic temporal features (Sine/Cosine encoding) for Time/Day/Month."""
+    dt = df['LTScheduledDatetime']
     df['hour']      = dt.dt.hour
     df['dayofweek'] = dt.dt.dayofweek
     df['month']     = dt.dt.month
@@ -69,42 +65,39 @@ def add_features(df):
     for col, period in [('hour', 24), ('month', 12), ('dayofweek', 7)]:
         df[f'sin_{col}'] = np.sin(2 * np.pi * df[col] / period)
         df[f'cos_{col}'] = np.cos(2 * np.pi * df[col] / period)
+    return df
 
-    # 🗓️ Binary Calendar Indicators
-    df['is_weekend'] = (df['dayofweek'] >= 5).astype(int)
-    
-    # 🛫 Flight systemic attributes
+def _add_flight_attributes(df):
+    """Normalizes core flight attributes and identifiers."""
     df['is_arrival'] = df['Direction'].str.lower().str.startswith('arr').astype(int)
     df['is_charter'] = (df['ScheduleType'].fillna('') == 'Non Régulier').astype(int)
+    
     for col, fill in [('NbOfSeats', 0), ('NbConveyor', 1), ('NbAirbridge', 0)]:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(fill)
     for col in ['IdBusContactType', 'IdTerminalType', 'IdBagStatusDelivery']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    return df
 
-    # 🌩️ Bidirectional External Signals
-    df['date'] = df['LTScheduledDatetime'].dt.date
+def _add_external_signals(df):
+    """Joins weather, regional school holidays, and global calendar events."""
     df['origin_iata'] = np.where(df['is_arrival'] == 1, df['AirportOrigin'], 'LYS')
     df['dest_iata']   = np.where(df['is_arrival'] == 0, df['SysStopover'], 'LYS')
     
-    # 1. Weather Logic (Origin vs Destination)
+    # 1. Weather Matching
     for prefix, iata_col in [('origin', 'origin_iata'), ('dest', 'dest_iata')]:
         if WEATHER_DF is not None:
             w_sub = WEATHER_DF[['date', 'iata', 'temp_max', 'precip']].copy()
             w_sub.columns = ['date', iata_col, f'temp_max_{prefix}', f'precip_{prefix}']
             df = df.merge(w_sub, on=['date', iata_col], how='left')
-            
-            # Proxy missing hub weather with Lyon baseline
             lys_w = WEATHER_DF[WEATHER_DF['iata'] == 'LYS'][['date', 'temp_max', 'precip']].copy()
-            lys_w.columns = ['date', f'temp_max_{prefix}_lys', f'precip_{prefix}_lys']
-            df = df.merge(lys_w, on='date', how='left')
-            
-            df[f'temp_max_{prefix}'] = df[f'temp_max_{prefix}'].fillna(df[f'temp_max_{prefix}_lys']).fillna(-1)
-            df[f'precip_{prefix}']   = df[f'precip_{prefix}'].fillna(df[f'precip_{prefix}_lys']).fillna(-1)
-            df = df.drop(columns=[f'temp_max_{prefix}_lys', f'precip_{prefix}_lys'])
+            df = df.merge(lys_w.rename(columns={'temp_max': 't_lys', 'precip': 'p_lys'}), on='date', how='left')
+            df[f'temp_max_{prefix}'] = df[f'temp_max_{prefix}'].fillna(df['t_lys']).fillna(-1)
+            df[f'precip_{prefix}']   = df[f'precip_{prefix}'].fillna(df['p_lys']).fillna(-1)
+            df = df.drop(columns=['t_lys', 'p_lys'])
         else:
             df[f'temp_max_{prefix}'], df[f'precip_{prefix}'] = -1, -1
 
-    # 2. Dynamic multi-zone school calendars
+    # 2. School Calendars
     for zone in ['Zone A', 'Zone B', 'Zone C']:
         z_col = zone.lower().replace(' ', '_')
         df[f'is_school_holiday_{z_col}'] = 0
@@ -114,24 +107,54 @@ def add_features(df):
                 mask = (df['date'] >= row['start']) & (df['date'] <= row['end'])
                 df.loc[mask, f'is_school_holiday_{z_col}'] = 1
 
-    # 3. Dynamic Global Holiday Lookup (Origin vs Destination)
-    df['origin_country'] = df['origin_iata'].map(get_country)
-    df['dest_country']   = df['dest_iata'].map(get_country)
+    # 3. National Holidays
+    df['origin_country'] = df['origin_iata'].map(_get_country)
+    df['dest_country']   = df['dest_iata'].map(_get_country)
     unique_countries     = set(df['origin_country'].dropna().unique()) | set(df['dest_country'].dropna().unique())
-    holiday_cache        = {c: set(holidays.country_holidays(c, years=[2023, 2024, 2025, 2026]).keys()) 
-                            for c in unique_countries}
-            
+    holiday_cache        = {c: set(holidays.country_holidays(c, years=[2023, 2024, 2025, 2026]).keys()) for c in unique_countries}
     df['is_origin_holiday']      = df.apply(lambda r: int(r['date'] in holiday_cache.get(r['origin_country'], set())), axis=1)
     df['is_destination_holiday'] = df.apply(lambda r: int(r['date'] in holiday_cache.get(r['dest_country'], set())), axis=1)
+    return df
+
+def _add_religious_surges(df):
+    """Implements Hijri-alignment for religious travel surges."""
+    eid_dates = {2023: pd.to_datetime('2023-04-21'), 2024: pd.to_datetime('2024-04-10'), 
+                 2025: pd.to_datetime('2025-03-31'), 2026: pd.to_datetime('2026-03-20')}
+    df['eid_start'] = pd.to_datetime(df['year'].map(eid_dates.get))
+    df['days_from_eid'] = (pd.to_datetime(df['date']) - df['eid_start']).dt.days
+    df['days_from_eid'] = df['days_from_eid'].fillna(0).clip(-30, 30)
+    df['return_surge'] = np.exp(-((df['days_from_eid'] - 7)**2) / (2 * 3**2))
+    return df
+
+def _add_historical_lags(df):
+    """Calculates tight-route concurrency and occupancy lags."""
+    df['tight_key'] = df['airlineOACICode'].astype(str) + df['FlightNumberNormalized'].astype(str) + df['Direction'].astype(str)
     
-    return df.drop(columns=['date', 'origin_iata', 'dest_iata', 'origin_country', 'dest_country'])
+    # Hub-level concurrency pressure
+    hub_counts = df.groupby('LTScheduledDatetime').size().reset_index(name='hub_pressure')
+    df = df.merge(hub_counts, on='LTScheduledDatetime', how='left')
+
+    # Flight-specific Historical Lags
+    ref_cols = ['LTScheduledDatetime', 'tight_key', 'NbPaxTotal']
+    historical = df[df['NbPaxTotal'].notna()][ref_cols].sort_values('LTScheduledDatetime').copy()
+    
+    for lag_days in [7, 14]:
+        lag_ref = historical.copy()
+        lag_ref['LTScheduledDatetime'] = lag_ref['LTScheduledDatetime'] + pd.Timedelta(days=lag_days)
+        lag_ref.columns = ['LTScheduledDatetime', 'tight_key', f'NbPax_Lag_{lag_days}d']
+        df = pd.merge_asof(df.sort_values('LTScheduledDatetime'), lag_ref.sort_values('LTScheduledDatetime'),
+                           on='LTScheduledDatetime', by='tight_key', direction='nearest', tolerance=pd.Timedelta(hours=4))
+    return df
 
 def prepare_X(df, columns=None):
-    """Final cast to categorical and numeric types before LightGBM ingestion."""
-    columns = columns or [c for c in ALL_FEATURES if c in df.columns]
-    X = df[columns].copy()
-    for col in CATEGORICAL:
+    """Cast features to rigorous LightGBM types."""
+    columns = columns or ALL_FEATURES
+    X = df[[c for c in columns if c in df.columns]].copy()
+    
+    for col in CATEGORICAL_FEATURES:
         if col in X: X[col] = X[col].astype('category')
-    numeric_cols = [c for c in columns if c not in CATEGORICAL]
+        
+    numeric_cols = X.select_dtypes(include=[np.number]).columns
     X[numeric_cols] = X[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(-1)
-    return X, columns
+    
+    return X, X.columns.tolist()

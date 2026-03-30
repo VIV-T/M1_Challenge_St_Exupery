@@ -5,39 +5,71 @@ This is the ONLY file you need to edit to change the pipeline behavior.
 """
 from pathlib import Path
 
+# ── BigQuery Configuration ──────────────────────────────────────────────────
+USE_BIGQUERY = True
+BQ_PROJECT   = "va-sdh-adl-staging"
+BQ_DATASET   = "aero_insa"
+BQ_TABLE     = "mouvements_aero_insa"
+BQ_CREDS     = "insa/va-sdh-adl-staging.json"
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
-DATA_FILE  = Path('mouvements_aero_insa.csv')
-OUTPUT_DIR = Path('outputs_new')
-SEED       = 42
+DATA_FILE       = Path('mouvements_aero_insa.csv')
+WEATHER_FILE    = Path('externals/weather_hubs.csv')
+SCHOOL_CAL_FILE = Path('externals/school_holidays.csv')
+OUTPUT_DIR      = Path('outputs_new')
+SEED            = 42
 
 # ── Data Split Configuration ──────────────────────────────────────────────────
-# This date defines the boundary between Training and Inference.
-# Everything BEFORE this date is for Training/Validation.
-# Everything AFTER this date is for Inference/Benchmarking.
-# Example: Use '2026-03-01' for Full March, '2026-03-24' for Edge of Reality.
-INFERENCE_START_DATE = '2026-03-24'
+# Temporal Boundary for Blind Testing
+INFERENCE_START_DATE = '2026-01-01'
 
-# ── Columns to load from CSV ─────────────────────────────────────────────────
-# We only load a subset of the ~200 columns to save memory.
-COLUMNS = [
-    # Core IDs
+# ── Model Hyperparameters ────────────────────────────────────────────────────
+LGB_PAX_PARAMS = {
+    'n_estimators': 2000,
+    'learning_rate': 0.02,
+    'num_leaves': 63,
+    'feature_fraction': 0.8,
+    'bagging_fraction': 0.8,
+    'bagging_freq': 5,
+    'random_state': SEED,
+    'verbosity': -1
+}
+
+LGB_PRM_PARAMS = {
+    'n_estimators': 500,
+    'learning_rate': 0.05,
+    'num_leaves': 15,
+    'random_state': SEED,
+    'verbosity': -1
+}
+
+# ── Feature Manifest ──────────────────────────────────────────────────────────
+CATEGORICAL_FEATURES = [
+    'airlineOACICode', 'OperatorOACICodeNormalized', 'SysStopover',
+    'AirportOrigin', 'IdAircraftType', 'Terminal', 'ServiceCode',
+    'FuelProvider'
+]
+
+ALL_FEATURES = [
+    'NbOfSeats', 'NbConveyor', 'NbAirbridge',
+    'is_arrival', 'is_charter',
+    'temp_max_origin', 'is_origin_holiday', 'is_destination_holiday',
+    'days_from_eid', 'return_surge', 'hub_pressure',
+    'NbPax_Lag_7d', 'NbPax_Lag_14d',
+    *CATEGORICAL_FEATURES,
+    'year', 'month', 'week', 'dayofweek', 'hour',
+    'sin_hour', 'cos_hour', 'sin_month', 'cos_month',
+]
+
+# ── CSV Loading Filter ───────────────────────────────────────────────────────
+LOAD_COLUMNS = [
     'IdMovement', 'FlightNumberNormalized', 'IdTraficType', 
-    'IdBusinessUnitType',
-
-    # Temporal & Static
-    'LTScheduledDatetime', 'Direction', 'Terminal',
+    'IdBusinessUnitType', 'LTScheduledDatetime', 'Direction', 'Terminal',
     'airlineOACICode', 'OperatorOACICodeNormalized',
     'SysStopover', 'AirportOrigin', 'IdAircraftType',
-
-    # Flight Attributes (all confirmed SAFE by BigQuery audit)
     'NbOfSeats', 'ServiceCode', 'ScheduleType',
     'NbAirbridge', 'NbConveyor',
     'IdBusContactType', 'IdTerminalType', 'IdBagStatusDelivery',
-    'FuelProvider',
-
-    # Target Outcomes & PRM
-    'NbPaxTotal', 'flight_with_pax',
-    'OzionNbReservations'
+    'FuelProvider', 'NbPaxTotal', 'flight_with_pax',
+    'FarmsNbPaxPHMR'
 ]
-
-# End of config
