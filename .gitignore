@@ -19,3 +19,6 @@ outputs_new/
 # IDE
 .vscode/
 .idea/
+
+.history/
+Challenge_2026_SaintExAirport.md

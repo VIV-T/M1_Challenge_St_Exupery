@@ -58,31 +58,5 @@ def main():
     predictions.to_csv(out_path, index=False)
     print(f"DONE. Repository ready for submission. Results: {out_path}")
 
-    # 5. Auto-Evaluation against Ground Truth
-    evaluate_march(predictions)
-
-def evaluate_march(preds):
-    """Automatically evaluates March 2026 predictions against BigQuery ground truth."""
-    from google.cloud import bigquery
-    print("\n" + "="*50)
-    print("  MARCH 2026 PERFORMANCE BENCHMARK")
-    print("="*50)
-    
-    try:
-        client = bigquery.Client()
-        query = "SELECT LTScheduledDatetime, Direction, NbPaxTotal FROM `airport_data.actuals` WHERE date >= '2026-03-01'"
-        actuals = client.query(query).to_dataframe()
-        
-        # Match logic
-        merged = preds.merge(actuals, on=['LTScheduledDatetime', 'Direction'])
-        if not merged.empty:
-            mae = mean_absolute_error(merged['NbPaxTotal'], merged['predicted_pax'])
-            accuracy = 100 - (mae / merged['NbPaxTotal'].mean() * 100)
-            print(f"  Commercial Flights : {len(merged)}")
-            print(f"  Flight MAE         : {mae:.2f} passengers")
-            print(f"  System Accuracy    : {accuracy:.1f} %")
-    except Exception:
-        print("  Ground truth access requires active BigQuery authentication.")
-
 if __name__ == "__main__":
     main()
