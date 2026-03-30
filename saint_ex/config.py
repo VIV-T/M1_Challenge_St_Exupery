@@ -21,7 +21,8 @@ SEED            = 42
 
 # ── Data Split Configuration ──────────────────────────────────────────────────
 # Temporal Boundary for Blind Testing
-INFERENCE_START_DATE = '2026-01-01'
+INFERENCE_START_DATE = '2025-01-01'
+OCCUPANCY_CLIP = 1.2
 
 # ── Model Hyperparameters ────────────────────────────────────────────────────
 LGB_PAX_PARAMS = {
@@ -35,6 +36,20 @@ LGB_PAX_PARAMS = {
     'cat_smooth': 10,
     'random_state': SEED,
     'verbosity': -1
+}
+
+XGB_PAX_PARAMS = {
+    'objective': 'reg:absoluteerror',
+    'n_estimators': 800,
+    'learning_rate': 0.05,
+    'max_depth': 6,
+    'subsample': 0.8,
+    'colsample_bytree': 0.8,
+    'random_state': SEED,
+    'n_jobs': -1,
+    'tree_method': 'hist',
+    'device': 'cpu',
+    'enable_categorical': True
 }
 
 LGB_PRM_PARAMS = {
@@ -57,12 +72,15 @@ CATEGORICAL_FEATURES = [
 ALL_FEATURES = [
     'NbOfSeats', 'NbConveyor', 'NbAirbridge',
     'is_arrival', 'is_charter',
-    'temp_max_origin', 'is_origin_holiday', 'is_destination_holiday',
+    'temp_max_origin', 'precip_origin', 'precip_dest',
+    'is_origin_holiday', 'is_destination_holiday',
     'days_from_eid', 'return_surge', 'hub_pressure',
     'NbPax_Lag_7d', 'NbPax_Lag_14d', 'route_avg_occupancy',
-    *CATEGORICAL_FEATURES,
-    'year', 'month', 'week', 'dayofweek', 'hour',
+    'hub_momentum_7d', 'route_momentum_7d', 'minute_of_day', 
     'sin_hour', 'cos_hour', 'sin_month', 'cos_month',
+    'rain_arrival_impact', 'heat_stress',
+    'is_school_holiday_zone_a', 'is_school_holiday_zone_b', 'is_school_holiday_zone_c',
+    *CATEGORICAL_FEATURES,
 ]
 
 # ── CSV Loading Filter ───────────────────────────────────────────────────────

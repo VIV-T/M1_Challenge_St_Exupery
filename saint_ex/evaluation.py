@@ -28,7 +28,8 @@ def evaluate_predictions(preds_df):
     query = f"""
         SELECT 
             IdMovement, LTScheduledDatetime, airlineOACICode, 
-            SysStopover, Direction, NbPaxTotal, NbOfSeats, IdBusinessUnitType, flight_with_pax
+            SysStopover, Direction, NbPaxTotal, NbOfSeats, IdBusinessUnitType, flight_with_pax,
+            FarmsNbPaxPHMR
         FROM {table_ref}
         WHERE LTScheduledDatetime >= '{start_date}'
           AND NbPaxTotal IS NOT NULL
@@ -59,33 +60,39 @@ def evaluate_predictions(preds_df):
         return
 
     # 3. Calculate Metrics
-    flight_mae = (merged['predicted_pax'] - merged['NbPaxTotal']).abs().mean()
+    flight_mae = (merged['Pred_NbPaxTotal'] - merged['NbPaxTotal']).abs().mean()
     flight_acc = 100 * max(0, 1 - (flight_mae / merged['NbPaxTotal'].mean()))
-    global_reliability = 100 * (merged['predicted_pax'].sum() / merged['NbPaxTotal'].sum())
+    global_reliability = 100 * (merged['Pred_NbPaxTotal'].sum() / merged['NbPaxTotal'].sum())
+
+    # PRM Metrics
+    prm_mae = (merged['Pred_FarmsNbPaxPHMR'] - merged['FarmsNbPaxPHMR']).abs().mean()
+    prm_acc = 100 * max(0, 1 - (prm_mae / (merged['FarmsNbPaxPHMR'].mean() + 1e-9)))
 
     # Hourly Aggregation (Operational Resolution)
     merged['hour_key'] = merged['LTScheduledDatetime'].dt.strftime('%Y-%m-%d %H:00')
-    hourly_slots = merged.groupby('hour_key')[['predicted_pax', 'NbPaxTotal']].sum().reset_index()
-    hourly_mae = (hourly_slots['predicted_pax'] - hourly_slots['NbPaxTotal']).abs().mean()
+    hourly_slots = merged.groupby('hour_key')[['Pred_NbPaxTotal', 'NbPaxTotal']].sum().reset_index()
+    hourly_mae = (hourly_slots['Pred_NbPaxTotal'] - hourly_slots['NbPaxTotal']).abs().mean()
     hourly_acc = 100 * max(0, 1 - (hourly_mae / hourly_slots['NbPaxTotal'].mean()))
 
     # Daily Aggregation
     merged['day_key'] = merged['LTScheduledDatetime'].dt.date
-    daily = merged.groupby('day_key')[['predicted_pax', 'NbPaxTotal']].sum().reset_index()
-    daily_mae = (daily['predicted_pax'] - daily['NbPaxTotal']).abs().mean()
+    daily = merged.groupby('day_key')[['Pred_NbPaxTotal', 'NbPaxTotal']].sum().reset_index()
+    daily_mae = (daily['Pred_NbPaxTotal'] - daily['NbPaxTotal']).abs().mean()
     daily_acc = 100 * max(0, 1 - (daily_mae / daily['NbPaxTotal'].mean()))
 
     print("\n" + "="*50)
     print(f"  FINAL VALIDATION RESULTS ({start_date} → Now)")
     print("="*50)
-    print(f"  Commercial Flights   : {len(merged):,}")
-    print(f"  Flight MAE           : {flight_mae:.2f} passengers")
-    print(f"  Flight Accuracy      : {flight_acc:.1f} %")
-    print(f"  Hourly Total MAE     : {hourly_mae:.2f} passengers/hour")
-    print(f"  Hourly Total Accuracy: {hourly_acc:.1f} %")
-    print(f"  Daily Total MAE      : {daily_mae:.2f} passengers/day")
-    print(f"  Daily Total Accuracy : {daily_acc:.1f} %")
-    print(f"  Global Reliability   : {global_reliability:.1f} % (Sum Ratio)")
+    print(f"  Commercial Flights     : {len(merged):,}")
+    print(f"  Flight Pax MAE         : {flight_mae:.2f} passengers")
+    print(f"  Flight Pax Accuracy    : {flight_acc:.1f} %")
+    print(f"  Hourly Total Pax MAE   : {hourly_mae:.2f} passengers/hour")
+    print(f"  Hourly Total Pax Acc   : {hourly_acc:.1f} %")
+    print(f"  Daily Total Pax MAE    : {daily_mae:.2f} passengers/day")
+    print(f"  Daily Total Pax Acc    : {daily_acc:.1f} %")
+    print(f"  PRM Flow MAE           : {prm_mae:.2f} PRMs/flight")
+    print(f"  PRM Flow Accuracy      : {prm_acc:.1f} %")
+    print(f"  Global Pax Reliability : {global_reliability:.1f} % (Sum Ratio)")
     print("="*50)
 
     # 4. Auto-Generate Visualizations
@@ -95,13 +102,13 @@ def evaluate_predictions(preds_df):
     
     # Intra-Day Distribution (Avg per Hour)
     merged['hour'] = merged['LTScheduledDatetime'].dt.hour
-    hourly = merged.groupby('hour')[['predicted_pax', 'NbPaxTotal']].sum().reset_index()
+    hourly = merged.groupby('hour')[['Pred_NbPaxTotal', 'NbPaxTotal']].sum().reset_index()
     viz.plot_hourly_distribution(hourly)
     
     # Weekly Signature (Mean Daily Total per Day of Week)
     merged['dayofweek'] = merged['LTScheduledDatetime'].dt.dayofweek
-    daily_totals = merged.groupby(['day_key', 'dayofweek'])[['predicted_pax', 'NbPaxTotal']].sum().reset_index()
-    weekly_sig = daily_totals.groupby('dayofweek')[['predicted_pax', 'NbPaxTotal']].mean().reset_index()
+    daily_totals = merged.groupby(['day_key', 'dayofweek'])[['Pred_NbPaxTotal', 'NbPaxTotal']].sum().reset_index()
+    weekly_sig = daily_totals.groupby('dayofweek')[['Pred_NbPaxTotal', 'NbPaxTotal']].mean().reset_index()
     viz.plot_weekly_signature(weekly_sig)
     
     importance_path = os.path.join(OUTPUT_DIR, "importance.csv")
@@ -147,14 +154,14 @@ def run_historical_backtest(df):
         model = PaxModel()
         model.train(X_h, h_enriched['NbPaxTotal'])
         
-        test['predicted_pax'] = model.predict(X_t)
+        test['Pred_NbPaxTotal'] = model.predict(X_t)
         
         # Metrics
-        f_mae = (test['predicted_pax'] - test['NbPaxTotal']).abs().mean()
+        f_mae = (test['Pred_NbPaxTotal'] - test['NbPaxTotal']).abs().mean()
         
         test['day_key'] = test['LTScheduledDatetime'].dt.date
-        daily = test.groupby('day_key')[['predicted_pax', 'NbPaxTotal']].sum()
-        d_acc = 100 * max(0, 1 - ((daily['predicted_pax'] - daily['NbPaxTotal']).abs().mean() / daily['NbPaxTotal'].mean()))
+        daily = test.groupby('day_key')[['Pred_NbPaxTotal', 'NbPaxTotal']].sum()
+        d_acc = 100 * max(0, 1 - ((daily['Pred_NbPaxTotal'] - daily['NbPaxTotal']).abs().mean() / daily['NbPaxTotal'].mean()))
         
         results.append({
             "Window": window['name'],

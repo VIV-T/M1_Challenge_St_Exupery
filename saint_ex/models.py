@@ -22,9 +22,8 @@ class PaxModel:
         self.features = X.columns.tolist()
         
         # 🎯 Target Transformation: Predict the relative yield/occupancy
-        # Handle NbOfSeats=0 cases gracefully
         seats_train = X['NbOfSeats'].clip(lower=1)
-        y_trans = (y / seats_train).clip(0, 1.2) # Allow for slight overbooking in training
+        y_trans = (y / seats_train).clip(0, 1.2)
         
         eval_set = None
         if X_val is not None and y_val is not None:
@@ -47,8 +46,11 @@ class PaxModel:
 
     def predict(self, X):
         """Standard Occupancy Inference with inverse-transformation."""
-        occ_pred = self.model.predict(X[self.features])
-        return np.maximum(0, occ_pred * X['NbOfSeats'])
+        from saint_ex.config import OCCUPANCY_CLIP
+        # Predict occupancy ratio and clip
+        occ_pred = self.model.predict(X[self.features]).clip(0, OCCUPANCY_CLIP)
+        # Rescale to raw counts
+        return np.maximum(0, occ_pred * X['NbOfSeats']).round().astype(int)
 
 class PRMModel:
     """Regressor for Passenger with Reduced Mobility (PRM) flows."""

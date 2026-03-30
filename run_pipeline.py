@@ -38,14 +38,18 @@ def main():
     
     # 📈 Compute Route Signatures (Historical Yield) from Training Data only
     print("  Calculating Historical Route Signatures...")
-    temp_occ = (train_df['NbPaxTotal'] / train_df['NbOfSeats'].clip(lower=1)).clip(0, 1)
-    route_stats = pd.concat([train_df[['airlineOACICode', 'AirportOrigin']], temp_occ.rename('occ')], axis=1)
-    route_stats = route_stats.groupby(['airlineOACICode', 'AirportOrigin'])['occ'].mean().reset_index()
-    route_stats.columns = ['airlineOACICode', 'AirportOrigin', 'route_avg_occupancy']
+    from saint_ex.features import get_route_stats
+    route_stats = get_route_stats(train_df)
     
-    train_df = add_features(train_df, reference_stats=route_stats)
-    val_df   = add_features(val_df, reference_stats=route_stats)
-    pool_df  = add_features(pool_df, reference_stats=route_stats)
+    # 💡 IMPORTANT: Combine ALL data to allow rolling Momentum windows to bridge the Jan 1st gap
+    print("  Ensuring Time-Series Momentum Continuity...")
+    combined_df = pd.concat([train_df, val_df, pool_df], axis=0).sort_values('LTScheduledDatetime')
+    combined_df = add_features(combined_df, reference_stats=route_stats)
+    
+    # Re-split maintaining feature integrity
+    train_df = combined_df[combined_df.index.isin(train_df.index)].copy()
+    val_df   = combined_df[combined_df.index.isin(val_df.index)].copy()
+    pool_df  = combined_df[combined_df.index.isin(pool_df.index)].copy()
 
     X_train, cols = prepare_X(train_df)
     X_val, _     = prepare_X(val_df, cols)
@@ -59,12 +63,12 @@ def main():
     pax_model.train(X_train, train_df['NbPaxTotal'], X_val, val_df['NbPaxTotal'])
 
     prm_model = PRMModel()
-    prm_model.train(X_train, train_df['NbPRMTotal'], X_val, val_df['NbPRMTotal'])
+    prm_model.train(X_train, train_df['FarmsNbPaxPHMR'], X_val, val_df['FarmsNbPaxPHMR'])
     print(f"  Training Complete ({time.time() - t0:.1f}s).")
 
     # 4. Save Feature Importance Manifest for Reporting
     importance_df = pd.DataFrame({
-        'Feature': pax_model.features,
+        'Feature': cols,
         'Importance': pax_model.model.feature_importances_
     }).sort_values(by='Importance', ascending=False)
     importance_df.to_csv(os.path.join(OUTPUT_DIR, "importance.csv"), index=False)
@@ -74,10 +78,9 @@ def main():
     print("\n[STAGE 3] Generating 2026 Inference Pool...")
     t0 = time.time()
     results = pool_df[['IdMovement', 'LTScheduledDatetime', 'Direction', 'airlineOACICode', 'SysStopover', 'AirportOrigin']].copy()
-    results['IdMovement'] = results['IdMovement'].fillna('MISSING').astype(str)
     
-    results['predicted_pax'] = pax_model.predict(X_pool)
-    results['predicted_prm'] = prm_model.predict(X_pool)
+    results['Pred_NbPaxTotal'] = pax_model.predict(X_pool)
+    results['Pred_FarmsNbPaxPHMR'] = prm_model.predict(X_pool)
 
     out_path = os.path.join(OUTPUT_DIR, 'predictions_flight.csv')
     results.to_csv(out_path, index=False)

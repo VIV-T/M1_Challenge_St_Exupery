@@ -27,11 +27,11 @@ def plot_daily_momentum(daily_df, title="Project Saint-Exupéry — Daily Moment
     # 📈 Plotting Lines
     plt.plot(daily_df['day_key'], daily_df['NbPaxTotal'], 
              marker='o', linestyle='-', linewidth=2.5, label='Actual Ground Truth', color='#2ecc71')
-    plt.plot(daily_df['day_key'], daily_df['predicted_pax'], 
+    plt.plot(daily_df['day_key'], daily_df['Pred_NbPaxTotal'], 
              marker='s', linestyle='--', linewidth=2, label='ML Pipeline Prediction', color='#3498db')
     
     # Highlight the Surge Area
-    plt.fill_between(daily_df['day_key'], daily_df['NbPaxTotal'], daily_df['predicted_pax'], 
+    plt.fill_between(daily_df['day_key'], daily_df['NbPaxTotal'], daily_df['Pred_NbPaxTotal'], 
                      color='gray', alpha=0.1)
 
     plt.title(title, weight='bold')
@@ -83,7 +83,7 @@ def plot_error_distribution(merged_df):
     plt.figure(figsize=(10, 6))
     
     # Calculate Residual
-    merged_df['Residual'] = merged_df['predicted_pax'] - merged_df['NbPaxTotal']
+    merged_df['Residual'] = merged_df['Pred_NbPaxTotal'] - merged_df['NbPaxTotal']
     
     sns.histplot(merged_df['Residual'], kde=True, bins=30, color='#9b59b6', alpha=0.6)
     plt.axvline(0, color='red', linestyle='--', linewidth=2, label="Perfect Alignment")
@@ -112,10 +112,10 @@ def plot_hourly_distribution(hourly_df, title="Project Saint-Exupéry — Intra-
     
     sns.lineplot(x='hour', y='NbPaxTotal', data=hourly_df, 
                  marker='o', label='Actual Ground Truth (Mean)', color='#e67e22', linewidth=3, alpha=0.8)
-    sns.lineplot(x='hour', y='predicted_pax', data=hourly_df, 
+    sns.lineplot(x='hour', y='Pred_NbPaxTotal', data=hourly_df, 
                  marker='s', label='ML Pipeline Prediction (Mean)', color='#2c3e50', linewidth=1.5, linestyle='--')
     
-    plt.fill_between(hourly_df['hour'], hourly_df['NbPaxTotal'], hourly_df['predicted_pax'], 
+    plt.fill_between(hourly_df['hour'], hourly_df['NbPaxTotal'], hourly_df['Pred_NbPaxTotal'], 
                      color='orange', alpha=0.1)
 
     plt.title(title, weight='bold')
@@ -143,10 +143,10 @@ def plot_weekly_signature(weekly_df, title="Project Saint-Exupéry — Weekly Tr
     
     plt.plot(weekly_df['dayofweek'], weekly_df['NbPaxTotal'], 
              marker='o', label='Actual Ground Truth', color='#8e44ad', linewidth=3)
-    plt.plot(weekly_df['dayofweek'], weekly_df['predicted_pax'], 
+    plt.plot(weekly_df['dayofweek'], weekly_df['Pred_NbPaxTotal'], 
              marker='s', label='ML Pipeline Prediction', color='#2c3e50', linewidth=2, linestyle='--')
     
-    plt.fill_between(weekly_df['dayofweek'], weekly_df['NbPaxTotal'], weekly_df['predicted_pax'], 
+    plt.fill_between(weekly_df['dayofweek'], weekly_df['NbPaxTotal'], weekly_df['Pred_NbPaxTotal'], 
                      color='purple', alpha=0.05)
 
     plt.title(title, weight='bold')
