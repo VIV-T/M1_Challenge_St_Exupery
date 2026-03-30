@@ -8,9 +8,10 @@ Global Holidays) are loaded from dynamic local caches (no hardcoding).
 import numpy as np
 import pandas as pd
 import os
+from typing import Optional
 # --- External data logic moved to preprocessing.py ---
 
-def add_features(df: pd.DataFrame, reference_stats: pd.DataFrame = None) -> pd.DataFrame:
+def add_features(df: pd.DataFrame, reference_stats: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """
     Main orchestrator for Project Saint-Exupéry feature engineering.
     Sequentially enriches the dataset with temporal, external, and historical signals.

@@ -1,19 +1,47 @@
+"""
+Data preprocessing module for Project Saint-Exupéry Airport Passenger Flow Prediction.
+
+This module handles data ingestion, cleaning, filtering, and temporal splitting.
+It supports both live BigQuery data and local CSV snapshots with automatic fallback.
+
+Key Functions:
+- load_dataset(): Main data ingestion orchestrator
+- split_historical_inference(): Temporal data splitting for validation
+- External data joins: Weather, school holidays, national holidays
+"""
+
 import pandas as pd
 import numpy as np
 import os
+from typing import Tuple, Optional
 from google.cloud import bigquery
 from saint_ex.config import (
     INFERENCE_START_DATE, LOAD_COLUMNS, DATA_FILE,
-    USE_BIGQUERY, BQ_PROJECT, BQ_DATASET, BQ_TABLE, BQ_CREDS
+    USE_BIGQUERY, BQ_PROJECT, BQ_DATASET, BQ_TABLE, BQ_CREDS,
+    VALID_SERVICE_CODES, COMMERCIAL_BUSINESS_UNIT, 
+    MIN_SEATS_FOR_COMMERCIAL, FLIGHT_WITH_PAX_INDICATOR
 )
 
 def load_dataset(file_path: str = DATA_FILE) -> pd.DataFrame:
     """
-    Main ingestion orchestrator. Toggles between local CSV snapshot 
-    and live BigQuery production data based on configuration.
+    Main data ingestion orchestrator.
+    
+    Automatically toggles between live BigQuery data and local CSV snapshot
+    based on the USE_BIGQUERY configuration flag. Applies consistent schema
+    normalization and external data joins regardless of data source.
+    
+    Args:
+        file_path: Path to local CSV file (used only when USE_BIGQUERY=False)
+        
+    Returns:
+        DataFrame with cleaned and enriched flight data
+        
+    Raises:
+        FileNotFoundError: If local CSV file is missing when USE_BIGQUERY=False
     """
     if USE_BIGQUERY:
         df = _load_from_bigquery()
+        print("  ✅ Loaded live data from BigQuery")
     else:
         # Fallback to Local CSV
         if not os.path.exists(file_path):
@@ -22,11 +50,106 @@ def load_dataset(file_path: str = DATA_FILE) -> pd.DataFrame:
         print(f"Loading Local Snapshot: {file_path}...")
         df = pd.read_csv(file_path, low_memory=False, usecols=LOAD_COLUMNS)
         df = _normalize_schema(df)
+        print("  ✅ Loaded local CSV snapshot")
     
-    # ── External Data Joins ──────────────────────────────────────────────────
+    # Apply external data enrichment
+    df = _enrich_with_external_data(df)
+    
+    return df
+
+def _load_from_bigquery() -> pd.DataFrame:
+    """
+    Load live data from BigQuery using standard REST transport.
+    
+    Fetches the full ground-truth history including recent 2026 labels.
+    Uses the authoritative query to ensure consistent schema with CSV.
+    
+    Returns:
+        DataFrame with live BigQuery data
+    """
+    print(f"Syncing Live BigQuery Dataset: {BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}...")
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = BQ_CREDS
+    
+    # Initialize Standard Client
+    client = bigquery.Client(project=BQ_PROJECT)
+    
+    # Authoritative Query to ensure consistent schema with CSV
+    cols_str = ", ".join(LOAD_COLUMNS)
+    query = f"SELECT {cols_str} FROM `{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`"
+    
+    # Execute query and return results
+    df = client.query(query).to_dataframe()
+    return _normalize_schema(df)
+
+def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standardizes data types, filters commercial flights, and ensures data quality.
+    
+    This function applies consistent schema normalization regardless of data source:
+    - Standardizes datetime formats
+    - Filters to commercial flights only
+    - Removes technical/ferry flights
+    - Ensures target variable consistency
+    
+    Args:
+        df: Raw DataFrame from BigQuery or CSV
+        
+    Returns:
+        Normalized DataFrame with commercial flights only
+    """
+    # Standardize Chronological Index (Force ns precision for merge compatibility)
+    df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.tz_localize(None).astype('datetime64[ns]')
+    
+    # Standardize PRM Target (Passengers with Reduced Mobility)
+    if 'FarmsNbPaxPHMR' in df.columns:
+        df['NbPRMTotal'] = pd.to_numeric(df['FarmsNbPaxPHMR'], errors='coerce').fillna(0)
+    else:
+        df['NbPRMTotal'] = 0
+    
+    # Filter Commercial Flights (Exclude Ferry/Technical/Non-Pax)
+    initial_count = len(df)
+    
+    # Apply commercial flight filters based on business rules
+    commercial_mask = (
+        df['ServiceCode'].isin(VALID_SERVICE_CODES) &  # Valid service types
+        (df['IdBusinessUnitType'] == COMMERCIAL_BUSINESS_UNIT) &  # Commercial business unit
+        (df['NbOfSeats'] > MIN_SEATS_FOR_COMMERCIAL) &  # Has seating capacity
+        (df['flight_with_pax'].fillna('Non') == FLIGHT_WITH_PAX_INDICATOR)  # Carries passengers
+    )
+    
+    df = df[commercial_mask].copy()
+    
+    # For backtesting, only keep flights with realized passenger counts
+    if 'NbPaxTotal' in df.columns:
+        df = df[df['NbPaxTotal'] > 0].copy()
+        
+    filtered_count = initial_count - len(df)
+    print(f"  Processed {len(df):,} commercial flights ({filtered_count:,} ferry/technical filtered).")
+    
+    # Initialize high-quality identifiers
+    df['OperatorOACICodeNormalized'] = df['airlineOACICode'].fillna('UNKNOWN')
+    
+    return df
+
+def _enrich_with_external_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Enriches flight data with external signals (weather, holidays, etc.).
+    
+    This function orchestrates all external data joins:
+    - Weather data for origin and destination airports
+    - French school holidays by zone
+    - National holidays for origin/destination countries
+    
+    Args:
+        df: DataFrame with basic flight data
+        
+    Returns:
+        DataFrame enriched with external features
+    """
     # Identify destination IATA once for all joins
     df['AirportDestination'] = np.where(df['Direction'].str.startswith('Arr'), 'LYS', df['SysStopover'])
     
+    # Apply external data enrichments
     df = _add_weather_signals(df)
     df = _add_school_holidays(df)
     df = _add_national_holidays(df)
@@ -36,64 +159,20 @@ def load_dataset(file_path: str = DATA_FILE) -> pd.DataFrame:
     
     return df
 
-def _load_from_bigquery() -> pd.DataFrame:
-    """
-    Live ingestion from BigQuery using standard REST transport.
-    Fetches the full ground-truth history including recent 2026 labels.
-    """
-    print(f"Syncing Live BigQuery Dataset: {BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}...")
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = BQ_CREDS
-    
-    # Initialize Standard Client
-    client = bigquery.Client(project=BQ_PROJECT)
-    
-    # 📝 Authoritative Query to ensure consistent schema with CSV
-    cols_str = ", ".join(LOAD_COLUMNS)
-    query = f"SELECT {cols_str} FROM `{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`"
-    
-    # Fallback to REST (Storage API requires specific permissions not in SA)
-    df = client.query(query).to_dataframe()
-    return _normalize_schema(df)
-
-def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
-    """Standardizes types and filters technical operations to isolate commercial flow."""
-    # Standardize Chronological Index (Force ns precision for merge compatibility)
-    df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.tz_localize(None).astype('datetime64[ns]')
-    
-    # ♿ Standardize PRM Target
-    if 'FarmsNbPaxPHMR' in df.columns:
-        df['NbPRMTotal'] = pd.to_numeric(df['FarmsNbPaxPHMR'], errors='coerce').fillna(0)
-    else:
-        df['NbPRMTotal'] = 0
-    
-    # Filter Commercial Flows (Exclude Ferry/Technical/Non-Pax)
-    initial_count = len(df)
-    
-    # Strict Commercial Filter — Chapter IX Compliance
-    # Included: J (Scheduled), C (Charter), G (General), S (Scheduled Revenue), O (Contract Charter), L (Charter mixed)
-    # Excluded: T (Technical), E (Government), P (Positioning), X (Test), F (Freight), W (Military), R (Regional), etc.
-    mask = (
-        (df['ServiceCode'].isin(['J', 'S', 'C', 'G', 'O', 'L'])) & 
-        (df['IdBusinessUnitType'] == 1) &
-        (df['NbOfSeats'] > 0) &
-        (df['flight_with_pax'].fillna('Oui') == 'Oui')
-    )
-    df = df[mask].copy()
-    
-    # For Backtests, we only care about realized rows
-    if 'NbPaxTotal' in df.columns:
-        df = df[df['NbPaxTotal'] > 0].copy()
-        
-    diff = initial_count - len(df)
-    print(f"  Processed {len(df):,} commercial flights ({diff:,} ferry/technical filtered).")
-    
-    # Initialize high-quality identifiers
-    df['OperatorOACICodeNormalized'] = df['airlineOACICode'].fillna('UNKNOWN')
-    
-    return df
-
 def _add_weather_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """Joins weather signals for both origin and destination (LYS Hub focus)."""
+    """
+    Joins weather data for both origin and destination airports.
+    
+    Enriches flights with temperature and precipitation data:
+    - Origin airport: temperature and precipitation at departure
+    - Destination airport: precipitation at arrival (mainly LYS)
+    
+    Args:
+        df: DataFrame with flight data
+        
+    Returns:
+        DataFrame with weather features added
+    """
     from saint_ex.config import WEATHER_FILE
     if not os.path.exists(WEATHER_FILE):
         print(f"  ⚠️ Weather file missing at {WEATHER_FILE}. Skipping join.")
@@ -103,7 +182,7 @@ def _add_weather_signals(df: pd.DataFrame) -> pd.DataFrame:
     weather['date'] = pd.to_datetime(weather['date']).dt.date
     df['date_only'] = df['LTScheduledDatetime'].dt.date
     
-    # 1. Join for Origin (Temp/Rain at departure point)
+    # Join for Origin (Temp/Rain at departure point)
     df = df.merge(
         weather[['date', 'iata', 'temp_max', 'precip']],
         left_on=['date_only', 'AirportOrigin'],
@@ -111,7 +190,7 @@ def _add_weather_signals(df: pd.DataFrame) -> pd.DataFrame:
         how='left'
     ).rename(columns={'temp_max': 'temp_max_origin', 'precip': 'precip_origin'})
     
-    # 2. Join for Destination (Rain at arrival point, mainly LYS)
+    # Join for Destination (Rain at arrival point, mainly LYS)
     df = df.merge(
         weather[['date', 'iata', 'precip']],
         left_on=['date_only', 'AirportDestination'],
@@ -123,17 +202,28 @@ def _add_weather_signals(df: pd.DataFrame) -> pd.DataFrame:
     drop_cols = ['date_x', 'iata_x', 'date_y', 'iata_y', 'date_only']
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
     
-    # Fill NAs for weather (Baseline 0 rain, 20C temp)
-    df['precip_origin'] = df['precip_origin'].fillna(0)
+    # Fill missing weather values with sensible defaults
+    df['precip_origin'] = df['precip_origin'].fillna(0)  # No rain = 0
     df['precip_dest'] = df['precip_dest'].fillna(0)
-    df['temp_max_origin'] = df['temp_max_origin'].fillna(20)
+    df['temp_max_origin'] = df['temp_max_origin'].fillna(20)  # Mild temp
     
     return df
-
 def _add_school_holidays(df: pd.DataFrame) -> pd.DataFrame:
-    """Joins French school holiday zones (A, B, C)."""
+    """
+    Adds French school holiday indicators by zone.
+    
+    France has three school holiday zones (A, B, C) with different calendars.
+    This function creates binary indicators for each zone.
+    
+    Args:
+        df: DataFrame with flight data
+        
+    Returns:
+        DataFrame with school holiday indicators added
+    """
     from saint_ex.config import SCHOOL_CAL_FILE
     if not os.path.exists(SCHOOL_CAL_FILE):
+        print(f"  ⚠️ School calendar file missing at {SCHOOL_CAL_FILE}. Skipping.")
         return df
     
     school_cal = pd.read_csv(SCHOOL_CAL_FILE)
@@ -141,10 +231,14 @@ def _add_school_holidays(df: pd.DataFrame) -> pd.DataFrame:
     school_cal['end'] = pd.to_datetime(school_cal['end']).dt.date
     
     df['date'] = df['LTScheduledDatetime'].dt.date
+    
+    # Create holiday indicators for each zone
     for zone in ['Zone A', 'Zone B', 'Zone C']:
         z_col = f"is_school_holiday_{zone.lower().replace(' ', '_')}"
         df[z_col] = 0
         z_cal = school_cal[school_cal['zone'] == zone]
+        
+        # Mark dates within holiday periods
         for _, row in z_cal.iterrows():
             mask = (df['date'] >= row['start']) & (df['date'] <= row['end'])
             df.loc[mask, z_col] = 1
@@ -153,45 +247,89 @@ def _add_school_holidays(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def _add_national_holidays(df: pd.DataFrame) -> pd.DataFrame:
-    """Joins bank holidays for origin and destination countries."""
+    """
+    Adds national holiday indicators for origin and destination countries.
+    
+    Creates binary indicators for whether a flight date falls on a national
+    holiday in either the origin or destination country.
+    
+    Args:
+        df: DataFrame with flight data
+        
+    Returns:
+        DataFrame with national holiday indicators added
+    """
     import holidays
     try:
         import airportsdata
         AIRPORTS = airportsdata.load('IATA')
     except Exception:
         AIRPORTS = {}
+        print("  ⚠️ airportsdata package not available. Country mapping limited.")
 
-    def get_country(iata):
-        if not isinstance(iata, str): return None
-        apt = AIRPORTS.get(iata)
+    def get_country(iata_code: str) -> Optional[str]:
+        """Get country code from IATA airport code."""
+        if not isinstance(iata_code, str):
+            return None
+        apt = AIRPORTS.get(iata_code)
         return apt['country'] if apt else None
 
     df['date'] = df['LTScheduledDatetime'].dt.date
     df['origin_country'] = df['AirportOrigin'].map(get_country)
-    df['dest_country']   = df['AirportDestination'].map(get_country)
+    df['dest_country'] = df['AirportDestination'].map(get_country)
     
+    # Get unique countries and cache their holidays
     unique_countries = set(df['origin_country'].dropna().unique()) | set(df['dest_country'].dropna().unique())
-    holiday_cache = {c: set(holidays.country_holidays(c, years=[2023, 2024, 2025, 2026]).keys()) for c in unique_countries}
+    holiday_cache = {
+        country: set(holidays.country_holidays(country, years=[2023, 2024, 2025, 2026]).keys())
+        for country in unique_countries
+    }
     
-    df['is_origin_holiday'] = df.apply(lambda r: int(r['date'] in holiday_cache.get(r['origin_country'], set())), axis=1)
-    df['is_destination_holiday'] = df.apply(lambda r: int(r['date'] in holiday_cache.get(r['dest_country'], set())), axis=1)
+    # Create holiday indicators
+    df['is_origin_holiday'] = df.apply(
+        lambda r: int(r['date'] in holiday_cache.get(r['origin_country'], set())), axis=1
+    )
+    df['is_destination_holiday'] = df.apply(
+        lambda r: int(r['date'] in holiday_cache.get(r['dest_country'], set())), axis=1
+    )
     
+    # Cleanup intermediate columns
     df = df.drop(columns=['date', 'origin_country', 'dest_country'])
     return df
 
-def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15):
-    """Chronologically splits the dataset based on the configured INFERENCE_START_DATE."""
+def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Performs chronological temporal split of the dataset.
+    
+    This function implements proper temporal validation to prevent data leakage:
+    - Training data: Historical period up to validation start
+    - Validation data: Most recent historical period (chronological)
+    - Inference pool: Future period for blind testing
+    
+    The split respects the INFERENCE_START_DATE configuration and ensures
+    no future information contaminates training data.
+    
+    Args:
+        df: Complete dataset with temporal ordering
+        val_ratio: Fraction of historical data to use for validation
+        
+    Returns:
+        Tuple of (train_df, val_df, inference_df) with chronological splits
+    """
     snapshot_cutoff = pd.to_datetime(INFERENCE_START_DATE)
     
+    # Separate historical from future data
     historical = df[df['LTScheduledDatetime'] < snapshot_cutoff].copy()
-    inference  = df[df['LTScheduledDatetime'] >= snapshot_cutoff].copy()
+    inference = df[df['LTScheduledDatetime'] >= snapshot_cutoff].copy()
     
+    # Split historical data into train/validation chronologically
     historical = historical.sort_values(by='LTScheduledDatetime')
     cutoff_idx = int(len(historical) * (1 - val_ratio))
     
     train = historical.iloc[:cutoff_idx].copy()
-    val   = historical.iloc[cutoff_idx:].copy()
+    val = historical.iloc[cutoff_idx:].copy()
     
+    # Display split information
     print("\nSplitting dynamic data stream...")
     print(f"  Training Range: {historical['LTScheduledDatetime'].min()} -> {historical['LTScheduledDatetime'].max()}")
     print(f"    - train     : {len(train):,}")

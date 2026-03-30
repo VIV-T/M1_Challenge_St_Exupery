@@ -31,6 +31,10 @@ def main():
 
     # Standard / Validate Mode
     train_df, val_df, pool_df = split_historical_inference(df)
+    
+    # Store original pool date range for accurate reporting
+    original_pool_min = pool_df['LTScheduledDatetime'].min()
+    original_pool_max = pool_df['LTScheduledDatetime'].max()
 
     # 2. Sequential Feature Engineering
     print("\n[STAGE 1] Engineering Dynamic Features...")
@@ -75,7 +79,13 @@ def main():
     print(f"  ✅ Feature Importance manifest exported to {OUTPUT_DIR}/importance.csv")
 
     # 5. Generate Final Predictions
-    print("\n[STAGE 3] Generating 2026 Inference Pool...")
+    pool_start = original_pool_min.strftime('%Y')
+    pool_end = original_pool_max.strftime('%Y')
+    if pool_start == pool_end:
+        period_desc = f"{pool_start}"
+    else:
+        period_desc = f"{pool_start}-{pool_end}"
+    print(f"\n[STAGE 3] Generating Future Period Predictions ({period_desc})...")
     t0 = time.time()
     results = pool_df[['IdMovement', 'LTScheduledDatetime', 'Direction', 'airlineOACICode', 'SysStopover', 'AirportOrigin']].copy()
     
