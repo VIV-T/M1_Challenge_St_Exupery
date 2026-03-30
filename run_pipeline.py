@@ -35,9 +35,17 @@ def main():
     # 2. Sequential Feature Engineering
     print("\n[STAGE 1] Engineering Dynamic Features...")
     t0 = time.time()
-    train_df = add_features(train_df)
-    val_df   = add_features(val_df)
-    pool_df  = add_features(pool_df)
+    
+    # 📈 Compute Route Signatures (Historical Yield) from Training Data only
+    print("  Calculating Historical Route Signatures...")
+    temp_occ = (train_df['NbPaxTotal'] / train_df['NbOfSeats'].clip(lower=1)).clip(0, 1)
+    route_stats = pd.concat([train_df[['airlineOACICode', 'AirportOrigin']], temp_occ.rename('occ')], axis=1)
+    route_stats = route_stats.groupby(['airlineOACICode', 'AirportOrigin'])['occ'].mean().reset_index()
+    route_stats.columns = ['airlineOACICode', 'AirportOrigin', 'route_avg_occupancy']
+    
+    train_df = add_features(train_df, reference_stats=route_stats)
+    val_df   = add_features(val_df, reference_stats=route_stats)
+    pool_df  = add_features(pool_df, reference_stats=route_stats)
 
     X_train, cols = prepare_X(train_df)
     X_val, _     = prepare_X(val_df, cols)

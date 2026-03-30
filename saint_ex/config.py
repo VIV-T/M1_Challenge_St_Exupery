@@ -25,20 +25,24 @@ INFERENCE_START_DATE = '2026-01-01'
 
 # ── Model Hyperparameters ────────────────────────────────────────────────────
 LGB_PAX_PARAMS = {
-    'n_estimators': 2000,
-    'learning_rate': 0.02,
-    'num_leaves': 63,
+    'objective': 'regression_l1',
+    'n_estimators': 3000,
+    'learning_rate': 0.01,
+    'num_leaves': 127,
     'feature_fraction': 0.8,
     'bagging_fraction': 0.8,
     'bagging_freq': 5,
+    'cat_smooth': 10,
     'random_state': SEED,
     'verbosity': -1
 }
 
 LGB_PRM_PARAMS = {
-    'n_estimators': 500,
-    'learning_rate': 0.05,
-    'num_leaves': 15,
+    'objective': 'tweedie',
+    'n_estimators': 800,
+    'learning_rate': 0.02,
+    'num_leaves': 31,
+    'feature_fraction': 0.9,
     'random_state': SEED,
     'verbosity': -1
 }
@@ -55,7 +59,7 @@ ALL_FEATURES = [
     'is_arrival', 'is_charter',
     'temp_max_origin', 'is_origin_holiday', 'is_destination_holiday',
     'days_from_eid', 'return_surge', 'hub_pressure',
-    'NbPax_Lag_7d', 'NbPax_Lag_14d',
+    'NbPax_Lag_7d', 'NbPax_Lag_14d', 'route_avg_occupancy',
     *CATEGORICAL_FEATURES,
     'year', 'month', 'week', 'dayofweek', 'hour',
     'sin_hour', 'cos_hour', 'sin_month', 'cos_month',

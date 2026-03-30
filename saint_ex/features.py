@@ -33,7 +33,7 @@ def _get_country(iata):
     apt = AIRPORTS.get(iata)
     return apt['country'] if apt else None
 
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_features(df: pd.DataFrame, reference_stats: pd.DataFrame = None) -> pd.DataFrame:
     """
     Main orchestrator for Project Saint-Exupéry feature engineering.
     Sequentially enriches the dataset with temporal, external, and historical signals.
@@ -47,6 +47,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df = _add_external_signals(df)
     df = _add_religious_surges(df)
     df = _add_historical_lags(df)
+    df = _add_historical_occupancy(df, reference_stats)
     
     # Drop intermediate keys and columns
     drop_cols = ['date', 'origin_iata', 'dest_iata', 'origin_country', 'dest_country', 'tight_key', 'eid_start']
@@ -144,6 +145,20 @@ def _add_historical_lags(df):
         lag_ref.columns = ['LTScheduledDatetime', 'tight_key', f'NbPax_Lag_{lag_days}d']
         df = pd.merge_asof(df.sort_values('LTScheduledDatetime'), lag_ref.sort_values('LTScheduledDatetime'),
                            on='LTScheduledDatetime', by='tight_key', direction='nearest', tolerance=pd.Timedelta(hours=4))
+    return df
+
+def _add_historical_occupancy(df, stats=None):
+    """
+    Injects route-level 'typical occupancy' signatures.
+    stats should be a DataFrame with ['airlineOACICode', 'AirportOrigin', 'route_avg_occupancy']
+    """
+    if stats is not None:
+        df = df.merge(stats, on=['airlineOACICode', 'AirportOrigin'], how='left')
+    else:
+        # Fallback for when we don't have stats yet (e.g. initial train pass)
+        df['route_avg_occupancy'] = 0.8 # Global airport average fallback
+        
+    df['route_avg_occupancy'] = df['route_avg_occupancy'].fillna(0.7)
     return df
 
 def prepare_X(df, columns=None):
