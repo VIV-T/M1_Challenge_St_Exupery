@@ -1,0 +1,37 @@
+Main objective:
+Prediction over the number of passengers per flight.
+Aggregation will be derived from those predictions:
+    - hourly base predictions. 
+    - daily base predictions.
+    - other ? (Terminal, Control Zone, ...)
+
+Challenge problem statement:
+    - predictive dimension: estimate the number of passengers, the main work.
+    - operational dimension: ressource location, based on our prediction (use of flow management variable such as the Terminal or the Control Zone).
+    - systemic dimension: use of external factor, such as the weather, the holidays, local event, global perturbations.
+    - ethical and environemental dimension.
+
+Note: take attention to PHMR (creeples)
+    - irregular distribution
+    - lower volume
+    - high operational importance.
+
+Technical requirements: 
+    - Low computation cost
+    - data loading optimization (daily automatization process / yearly for the holidays data)
+    - Efficient code structure.
+
+Main steps expected:
+    - data preparation and cleaning
+    - features selection and transformation.
+    - construction of training, validation and testing dataset.
+    - Experimentation with several models.
+
+Deliverables : 
+    - a complete notebook documenting the entire approach
+    - reproductible code presenting the predictive model capable of estimating passenger.
+        => with metrics presentations.
+    - report
+    - visualization
+    - propositions for operation optimization
+    - A CSR analysis (ethic and evironement)

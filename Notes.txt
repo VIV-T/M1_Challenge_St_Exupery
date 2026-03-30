@@ -176,10 +176,19 @@ Next steps:
     - Add of week end's column.
     - Modify "cache_vacances.json" location of saving (in the code)
     - Ask B. what's next (avoid git conflict and star to merge branch to centralized the work)
+###
 
 
 
 
+### 30/03 ###
+To improve predictions, we decide to implement a set of new columns and to think deeply about the criteria of selection of features.
+Here are the details (pls fill it B.):
+    - ...
+    - ...
+
+
+Plus, the way to handle time hase also change 
 
 
 

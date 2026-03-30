@@ -6,17 +6,54 @@ import pandas_gbq
 
 # ------------- Global variable -------------
 
+# column_list = """
+#     FlightNumberNormalized,
+#     LTScheduledDatetime, 
+#     Direction, 
+#     NbOfSeats,
+#     NbPaxTotal,
+#     IdBusinessUnitType, 
+#     IdAircraftType,
+#     SysStopover, 
+#     AirportOrigin,
+#     AirportPrevious, 
+#     Terminal
+#     """
+
 column_list = """
-    FlightNumberNormalized,
-    LTScheduledDatetime, 
-    Direction, 
-    NbOfSeats,
-    NbPaxTotal,
-    IdBusinessUnitType, 
-    SysStopover, 
-    AirportOrigin,
-    AirportPrevious, 
-    """
+IdMovement,
+IdADL,
+IdAircraftType,
+IdBusinessUnitType,
+IdBusContactType,
+IdTerminalType,
+IdBagStatusDelivery,
+NbFlight,
+AirportCode,
+airlineOACICode,
+SysStopover,
+AirportOrigin,
+AirportPrevious,
+ServiceCode,
+flightNumber,
+OperatorFlightNumber,
+FlightNumberNormalized,
+OperatorOACICodeNormalized,
+LTScheduledDatetime,
+LTScheduledTime,
+LTExternalDatetime,
+LTExternalDate,
+LTExternalTime,
+Direction,
+Terminal,
+SysTerminal,
+FuelProvider,
+ScheduleType,
+NbOfSeats,
+NbPaxTotal,
+etl_origin
+"""
+
 
 additional_condition = """
 ORDER BY LTScheduledDatetime DESC

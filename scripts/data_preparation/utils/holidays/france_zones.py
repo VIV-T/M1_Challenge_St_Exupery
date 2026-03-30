@@ -2,11 +2,12 @@ import requests
 import json
 import time
 from utils.holidays.env_variables import FR_MAPPING_ACADEMIE
+from pathlib import Path
+import os
 
 # --- CONFIGURATION ---
-
 API_URL = "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records"
-CACHE_FILE = 'cache_vacances.json'
+CACHE_FILE = os.path.join(Path(__file__).parent.parent.parent.parent.parent, "config", "cache_holidays.json")
 
 
 

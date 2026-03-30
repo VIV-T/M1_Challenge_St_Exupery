@@ -14,3 +14,6 @@
     - or another version of cuda or pytorch for CPU, depending of your setup.
 - seaborn
 - pandasql
+- optuna
+- prophet
+
