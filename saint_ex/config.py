@@ -10,18 +10,12 @@ DATA_FILE  = Path('mouvements_aero_insa.csv')
 OUTPUT_DIR = Path('outputs_new')
 SEED       = 42
 
-# ── Data split intervals ─────────────────────────────────────────────────────
-# Edit these dates to control what data goes into train / val / test.
-# Format: (start_date, end_date) — both inclusive.
-SPLIT = {
-    'train': ('2023-01-01', '2025-09-30'),
-    'val':   ('2025-10-01', '2026-02-28'),
-    'test':  ('2026-03-01', '2026-03-31'),
-}
-
-# The model is strictly forbidden from seeing outcomes (IdTraficType=1) after this date.
-# This ensures total legitimacy for the March 2026 evaluation.
-HISTORICAL_CUTOFF = '2026-02-28'
+# ── Data Split Configuration ──────────────────────────────────────────────────
+# This date defines the boundary between Training and Inference.
+# Everything BEFORE this date is for Training/Validation.
+# Everything AFTER this date is for Inference/Benchmarking.
+# Example: Use '2026-03-01' for Full March, '2026-03-24' for Edge of Reality.
+INFERENCE_START_DATE = '2026-03-24'
 
 # ── Columns to load from CSV ─────────────────────────────────────────────────
 # We only load a subset of the ~200 columns to save memory.

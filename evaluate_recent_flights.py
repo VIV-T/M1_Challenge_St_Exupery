@@ -27,9 +27,11 @@ def main():
     print("Loading March predictions...")
     preds = pd.read_csv(PREDICTIONS_PATH, parse_dates=['LTScheduledDatetime'])
     
-    # Force full March evaluation window
-    start_date = '2026-03-01'
-    print(f"  Evaluating performance for: {start_date} → 2026-03-31")
+    from saint_ex.config import INFERENCE_START_DATE
+    
+    # Force full evaluation window based on config
+    start_date = INFERENCE_START_DATE
+    print(f"  Evaluating performance for: {start_date} → Today")
 
     # 2. Query BigQuery for Realized Flights (Ground Truth)
     print("\nQuerying BigQuery for actual outcomes...")
@@ -41,7 +43,7 @@ def main():
     # We select exactly the same columns used in the training split.
     query = f"""
         SELECT 
-            IdMovement as ActualId,
+            IdMovement,
             LTScheduledDatetime,
             airlineOACICode,
             SysStopover,
@@ -61,17 +63,34 @@ def main():
     try:
         actuals = client.query(query).to_dataframe()
         actuals['LTScheduledDatetime'] = pd.to_datetime(actuals['LTScheduledDatetime'])
+        actuals['IdMovement'] = actuals['IdMovement'].fillna('MISSING').astype(str)
     except Exception as e:
         print(f"❌ BigQuery Error: {e}")
         return
 
     print(f"  Found {len(actuals):,} realized flights in BQ since {start_date}.")
     
-    # 3. Match Predictions vs Reality
+    # 3. Match Predictions vs Reality (Smart Disambiguation Approach)
     print("\nMatching predictions vs actuals...")
-    match_cols = ['LTScheduledDatetime', 'airlineOACICode', 'SysStopover', 'Direction']
-    merged = preds.merge(actuals, on=match_cols, how='inner')
+    # Anchor on high-entropy composite keys
+    anchor_cols = ['LTScheduledDatetime', 'airlineOACICode', 'SysStopover', 'Direction']
+    merged = preds.merge(actuals, on=anchor_cols, how='inner', suffixes=('', '_actual'))
     
+    # 🕵️ Smart IdMovement Disambiguation
+    # If IDs exist on both sides, we check for a match. 
+    # BUT: if the snapshot ID is a "placeholder" (starts with the date) and BQ is a real ID (numeric), 
+    # we don't treat a mismatch as a collision.
+    def is_real_id(s): return str(s).startswith('101') # Real IDs in this dataset start with 101...
+    
+    mask_both_real = merged['IdMovement'].apply(is_real_id) & merged['IdMovement_actual'].apply(is_real_id)
+    mask_mismatch = mask_both_real & (merged['IdMovement'] != merged['IdMovement_actual'])
+    
+    n_collisions = mask_mismatch.sum()
+    merged = merged[~mask_mismatch].copy()
+    
+    if n_collisions > 0:
+        print(f"  Resolved {n_collisions} data collisions using unique flight identifiers.")
+
     # Prune technical/ferry flights (Large planes with <10 pax)
     commercial_mask = ~((merged['NbOfSeats'] >= 50) & (merged['NbPaxTotal'] < 10))
     n_anomalies = (~commercial_mask).sum()

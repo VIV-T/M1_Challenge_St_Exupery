@@ -36,19 +36,31 @@ def load_dataset(file_path):
     
     return df
 
-def split_historical_inference(df, inference_start_date='2026-03-01'):
-    """Splits the full dataset into training/validation and the prediction pool."""
-    historical = df[df['LTScheduledDatetime'] < inference_start_date].copy()
-    inference  = df[df['LTScheduledDatetime'] >= inference_start_date].copy()
+from saint_ex.config import INFERENCE_START_DATE
+
+def split_historical_inference(df, val_ratio=0.15):
+    """
+    Splits the full dataset into labeled (historical) and unlabeled (inference) pools.
+    Performs a chronological 85/15 split on labeled data for internal validation.
+    The cutoff is driven by INFERENCE_START_DATE in config.py.
+    """
+    # 🏁 Precise Snapshot Boundary from Configuration
+    snapshot_cutoff = INFERENCE_START_DATE
     
-    # Internal validation split for final calibration (Last 5 months of history)
-    val_cutoff = '2025-10-01'
-    train = historical[historical['LTScheduledDatetime'] < val_cutoff].copy()
-    val   = historical[historical['LTScheduledDatetime'] >= val_cutoff].copy()
+    historical = df[df['LTScheduledDatetime'] < snapshot_cutoff].copy()
+    inference  = df[df['LTScheduledDatetime'] >= snapshot_cutoff].copy()
     
-    print("\nSplitting historical data...")
-    print(f"  train: {len(train):,}")
-    print(f"    val: {len(val):,}")
-    print(f"  Inference Pool: {len(inference):,}")
+    # Chronological Validation (Last 15% of historical data)
+    historical = historical.sort_values(by='LTScheduledDatetime')
+    cutoff_idx = int(len(historical) * (1 - val_ratio))
+    
+    train = historical.iloc[:cutoff_idx].copy()
+    val   = historical.iloc[cutoff_idx:].copy()
+    
+    print("\nSplitting dynamic snapshot data...")
+    print(f"  Historical Training Range: {historical['LTScheduledDatetime'].min()} -> {historical['LTScheduledDatetime'].max()}")
+    print(f"    - train     : {len(train):,}")
+    print(f"    - validation: {len(val):,}")
+    print(f"  Inference Pool (Recent Blind Test): {len(inference):,}")
     
     return train, val, inference

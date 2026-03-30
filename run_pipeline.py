@@ -50,7 +50,9 @@ def main():
 
     # 4. Generate Final Predictions
     print("\nGenerating March 2026 Inference...")
-    predictions = pool_df[['LTScheduledDatetime', 'Direction', 'airlineOACICode', 'SysStopover', 'AirportOrigin']].copy()
+    predictions = pool_df[['IdMovement', 'LTScheduledDatetime', 'Direction', 'airlineOACICode', 'SysStopover', 'AirportOrigin']].copy()
+    predictions['IdMovement'] = predictions['IdMovement'].fillna('MISSING').astype(str)
+    
     predictions['predicted_pax'] = pax_model.predict(X_pool)
     predictions['predicted_prm'] = prm_model.predict(X_pool)
 
