@@ -1,7 +1,7 @@
 ### Import
 import pandas as pd
-from utils.holidays.france_zones import get_zone_airports
-from utils.holidays.france_daily_calendar import get_calendar_scholar_holidays
+from scripts.data_preparation.utils.holidays.france_zones import get_zone_airports
+from scripts.data_preparation.utils.holidays.france_daily_calendar import get_calendar_scholar_holidays
 
 
 def add_scholar_holidays(df_flights, df_calendar): 

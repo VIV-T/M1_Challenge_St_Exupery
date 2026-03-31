@@ -1,9 +1,10 @@
 import requests
 import json
 import time
-from utils.holidays.env_variables import FR_MAPPING_ACADEMIE
 from pathlib import Path
 import os
+
+from scripts.data_preparation.utils.holidays.env_variables import FR_MAPPING_ACADEMIE
 
 # --- CONFIGURATION ---
 API_URL = "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records"

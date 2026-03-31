@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import time
-from utils.holidays.env_variables import START_DATE, END_DATE, FR_ZONES
+from scripts.data_preparation.utils.holidays.env_variables import START_DATE, END_DATE, FR_ZONES
 
 # --- CONFIGURATION ---
 API_URL = "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/records"

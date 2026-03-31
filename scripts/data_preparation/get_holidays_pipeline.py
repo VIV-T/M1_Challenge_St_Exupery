@@ -6,9 +6,10 @@ import numpy as np
 from pathlib import Path
 from pandasql import sqldf
 import holidays
-from utils.holidays.france_pipeline import pipeline_france
-from utils.holidays.international_scholar_holidays import add_scholar_holiday_international
-from utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
+
+from scripts.data_preparation.utils.holidays.france_pipeline import pipeline_france
+from scripts.data_preparation.utils.holidays.international_scholar_holidays import add_scholar_holiday_international
+from scripts.data_preparation.utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
 
 
 ### Global variable

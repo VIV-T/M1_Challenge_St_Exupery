@@ -10,10 +10,11 @@ Purpose of the script:
 import pandas as pd
 from pathlib import Path
 import os 
-from utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
 
-from get_holidays_pipeline import main_holiday_pipeline
-from utils.main.add_features import add_features
+# Personal imports
+from scripts.data_preparation.utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
+from scripts.data_preparation.get_holidays_pipeline import main_holiday_pipeline
+from scripts.data_preparation.utils.main.add_features import add_features
 
 
 data_folder = os.path.join(Path(__file__).parent.parent.parent, "data")
@@ -24,7 +25,7 @@ holidays_filename = Path(os.path.join(data_folder, "holidays.csv"))
 
 
 
-def main_reprocessed(data_old_filename, main_new_filename, with_holidays : bool =False) -> pd.DataFrame :
+def main_preprocessed(data_old_filename = main_old_filename, main_new_filename = main_new_filename, with_holidays : bool =False) -> pd.DataFrame :
     # initialization
     data = pd.read_csv(data_old_filename, encoding='utf-8')
 

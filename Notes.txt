@@ -188,8 +188,24 @@ Here are the details (pls fill it B.):
     - ...
 
 
-Plus, the way to handle time hase also change 
+Plus, the way to handle time have also change 
 
 
 
+###
+
+
+### 31/03 ###
+Refactor all the code architecture.
+
+add of a large set of new features => very helpful to increase models performances.
+
+Need of more external daat sources ? 
+
+
+
+TO DO :
+Clarify why rows are desapearing while loading holidays features (with the inner join) -> dig into the code to understand it
+Add PHMR model.
+Finish get_prediction.py script. 
 ###
