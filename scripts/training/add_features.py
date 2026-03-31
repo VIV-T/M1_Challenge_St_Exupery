@@ -93,7 +93,7 @@ def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
         df["Minute"] = pd.to_datetime(df['LTScheduledDatetime']).dt.minute
         df["DayOfWeek"] = pd.to_datetime(df['LTScheduledDatetime']).dt.dayofweek
         df['Hour_Of_Week'] = df['LTScheduledDatetime'].dt.dayofweek * 24 + df['LTScheduledDatetime'].dt.hour
-        df['Avg_Pax_Hour_Week'] = df.groupby('Hour_Of_Week')[TARGET].transform('mean')
+        # df['Avg_Pax_Hour_Week'] = df.groupby('Hour_Of_Week')[TARGET].transform('mean')
 
         # Cyclical encoding
         # the cyclical encoding for hours is here on a base of 60 minutes, but we can also do it on a base of 24h, or even 168h (hour of the week)
@@ -103,8 +103,6 @@ def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
             df = df.drop(columns=[col])
 
         return df 
-
-
 
 def add_lag_features(df: pd.DataFrame, group_cols: list, lags: dict) -> pd.DataFrame:
     # 1. NETTOYAGE DES TYPES
@@ -159,9 +157,6 @@ def add_lag_features(df: pd.DataFrame, group_cols: list, lags: dict) -> pd.DataF
 
     return df
 
-
-
-
 def add_rolling_features(df: pd.DataFrame, group_cols: list, windows: dict) -> pd.DataFrame:
     """
     Calcule des statistiques glissantes basées sur des durées réelles (fenêtres temporelles).
@@ -211,9 +206,6 @@ def add_rolling_features(df: pd.DataFrame, group_cols: list, windows: dict) -> p
         gc.collect()
 
     return df
-
-
-
 
 def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D", long_win: str = "30D") -> pd.DataFrame:
     """
