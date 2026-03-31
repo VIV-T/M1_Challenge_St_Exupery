@@ -15,7 +15,7 @@ import json
 import os 
 from datetime import datetime, timedelta
 from utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
-from utils.main.add_features import add_route_feature, add_route_index, add_optimized_historical_features, add_optimized_flight_history
+from utils.main.add_features import add_oaci_features, add_route_feature, add_route_index, add_optimized_historical_features, add_optimized_flight_history, add_lag_trend_features, add_dayofweek_histories, add_hour_histories, add_rolling_statistics, add_hourly_statistics, add_monthly_statistics, add_airline_statistics, add_median_to_historical_features
 
 data_folder = os.path.join(Path(__file__).parent.parent.parent, "data")
 config_folder = os.path.join(Path(__file__).parent.parent.parent, "config")
@@ -86,7 +86,7 @@ def pre_process_main(data_old_filename, data_new_filename)-> None:
     data = add_holidays_data(data)
 
     # Only keep commercial flight
-    data = data[data['IdBusinessUnitType'] == 1]
+    #data = data[data['IdBusinessUnitType'] == 1]
 
     # Direction - Arrivée -> 1 , Départ -> 0
     #data['Direction'] = data['Direction'].map({'Arrivée': 1, 'Départ': 0})
@@ -113,6 +113,12 @@ def pre_process_main(data_old_filename, data_new_filename)-> None:
     # with open(mappings_filename, 'w', encoding='utf-8') as f:
     #     json.dump(all_mappings, f, indent=4, ensure_ascii=False)
 
+
+    # Filtering
+    data = data[data['IdIrregularityCode'].isna()]  # Garder uniquement les vols sans irrégularité
+    data = data.drop(columns=['IdIrregularityCode'])  # Supprimer la colonne IdIrregularityCode après filtrage
+    print(data.shape)
+
     # Additional column creation
     data = add_route_feature(data=data)
     data = add_route_index(data=data)
@@ -120,9 +126,21 @@ def pre_process_main(data_old_filename, data_new_filename)-> None:
     # OccupancyPreviousYears column creation
     data = add_optimized_historical_features(df=data)
     data = add_optimized_flight_history(df=data)
+    data = add_oaci_features(df=data)
+    # NEW LAG AND TREND FEATURES
+    data = add_lag_trend_features(df=data)
+    data = add_dayofweek_histories(df=data)
+    data = add_hour_histories(df=data)
+    data = add_rolling_statistics(df=data)
+    # HOURLY AND MONTHLY STATISTICS
+    data = add_hourly_statistics(df=data)
+    data = add_monthly_statistics(df=data)
+    # AIRLINE STATISTICS + MEDIAN FEATURES
+    data = add_airline_statistics(df=data)
+    data = add_median_to_historical_features(df=data)
 
     # drop useless column
-    # data = data.drop(columns=["LTScheduledDatetime"])
+    data = data.drop(columns=["OccupancyRate"])
     
     # Saving the new dataframe
     data.to_csv(data_new_filename, encoding='utf-8', index=False)
