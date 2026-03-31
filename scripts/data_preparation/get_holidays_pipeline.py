@@ -131,7 +131,7 @@ def add_public_holidays(df: pd.DataFrame) -> pd.DataFrame:
 
 
 ### Main code
-if __name__ == '__main__' :
+def main_holiday_pipeline() -> pd.DataFrame : 
     df_main_simplify = get_main_simplify(data=data)
     df_code_infos = get_code_infos(main_simplify_df=df_main_simplify)
 
@@ -154,3 +154,5 @@ if __name__ == '__main__' :
     df_total = df_total.drop(col_rmv_list, axis=1)
     df_total.sort_values(by="LTScheduledDatetime", ascending=False)
     df_total.to_csv(os.path.join(data_folder, 'holidays.csv'), encoding = 'utf-8', index=False)
+
+    return df_total

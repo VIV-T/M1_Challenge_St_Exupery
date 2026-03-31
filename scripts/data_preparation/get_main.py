@@ -6,20 +6,6 @@ import pandas_gbq
 
 # ------------- Global variable -------------
 
-# column_list = """
-#     FlightNumberNormalized,
-#     LTScheduledDatetime, 
-#     Direction, 
-#     NbOfSeats,
-#     NbPaxTotal,
-#     IdBusinessUnitType, 
-#     IdAircraftType,
-#     SysStopover, 
-#     AirportOrigin,
-#     AirportPrevious, 
-#     Terminal
-#     """
-
 column_list = """
 IdMovement,
 IdADL,
