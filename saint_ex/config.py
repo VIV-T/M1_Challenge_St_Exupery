@@ -23,22 +23,26 @@ from typing import Dict, List, Any
 # Toggle between live BigQuery data and local CSV snapshot
 USE_BIGQUERY = True
 
+# Centralized resource directory
+RESOURCE_DIR = Path(__file__).parent / "resources"
+
 # BigQuery connection parameters
 BQ_PROJECT = "va-sdh-adl-staging"
 BQ_DATASET = "aero_insa" 
 BQ_TABLE = "mouvements_aero_insa"
-BQ_CREDS = "insa/va-sdh-adl-staging.json"
+BQ_CREDS = str(RESOURCE_DIR / "bigquery_creds.json")
 
 # =============================================================================
 # FILE PATHS AND DIRECTORIES
 # =============================================================================
 # Data files
-DATA_FILE = Path('mouvements_aero_insa.csv')  # Local CSV snapshot (fallback)
-WEATHER_FILE = Path('externals/weather_hubs.csv')  # Weather data for airports
-SCHOOL_CAL_FILE = Path('externals/school_holidays.csv')  # French school holidays
+DATA_FILE = RESOURCE_DIR / "mouvements_aero_insa.csv"  # Local CSV snapshot (fallback)
+WEATHER_FILE = RESOURCE_DIR / "weather_hubs.csv"       # Weather data for airports
+SCHOOL_CAL_FILE = RESOURCE_DIR / "school_holidays.csv" # French school holidays
+
 
 # Output directories
-OUTPUT_DIR = Path('outputs_new')  # Main results directory
+OUTPUT_DIR = Path('outputs')  # Main results directory
 
 # Random seed for reproducibility
 SEED = 42
@@ -48,7 +52,7 @@ SEED = 42
 # =============================================================================
 # Temporal boundary for blind testing - all data from this date forward is used
 # for inference only (no training data from this period)
-INFERENCE_START_DATE = '2025-01-01'
+INFERENCE_START_DATE = '2026-04-01'
 
 # Occupancy ratio clipping to prevent unrealistic predictions
 # Values above this ratio are clipped (e.g., 1.2 = max 120% occupancy)
@@ -62,15 +66,15 @@ OCCUPANCY_CLIP = 1.2
 # Uses L1 loss (MAE) for robust passenger count prediction
 LGB_PAX_PARAMS: Dict[str, Any] = {
     'objective': 'regression_l1',           # MAE loss function
-    'n_estimators': 3000,                   # Maximum number of trees
-    'learning_rate': 0.01,                  # Conservative learning rate
-    'num_leaves': 127,                      # Model complexity
-    'feature_fraction': 0.8,               # Feature subsampling
-    'bagging_fraction': 0.8,                # Data subsampling  
-    'bagging_freq': 5,                      # Bagging frequency
-    'cat_smooth': 10,                       # Categorical smoothing
+    'n_estimators': 5000,                   # Deep ensemble
+    'learning_rate': 0.005,                 # High precision
+    'num_leaves': 255,                      # High complexity
+    'feature_fraction': 0.7,                # Increased regularization
+    'bagging_fraction': 0.7,
+    'bagging_freq': 5,
+    'cat_smooth': 20,                       # Stronger categorical regularization
     'random_state': SEED,
-    'verbosity': -1                         # Suppress training output
+    'verbosity': -1
 }
 
 # LightGBM parameters for PRM (Passengers with Reduced Mobility) prediction
@@ -117,16 +121,21 @@ ALL_FEATURES: List[str] = [
     'is_origin_holiday', 'is_destination_holiday',
     
     # Religious event features (Hijri calendar)
-    'days_from_eid', 'return_surge', 'hub_pressure',
+    'days_from_eid', 'return_surge',
     
-    # Historical lag features
-    'NbPax_Lag_7d', 'NbPax_Lag_14d', 'route_avg_occupancy',
+    # Statistical yields and interactions (Hierarchical Target Encoding)
+    'route_month_occupancy', 'route_avg_occupancy', 'airline_avg_occupancy',
+    'pax_expected_baseline',
+    
+    # Hierarchical Lag Features (Flight -> Route -> Airline)
+    'NbPax_Lag_7d', 'NbPax_Lag_14d',
     
     # Momentum features
-    'hub_momentum_7d', 'route_momentum_7d',
+    'hub_momentum_7d', 'route_momentum_7d', 'hub_pressure',
     
     # Temporal features
     'minute_of_day', 'sin_hour', 'cos_hour', 'sin_month', 'cos_month',
+    'is_weekend', 'quarter', 
     
     # Weather interaction features
     'rain_arrival_impact', 'heat_stress',
@@ -146,7 +155,7 @@ ALL_FEATURES: List[str] = [
 # Only essential columns are loaded to reduce memory footprint
 LOAD_COLUMNS: List[str] = [
     # Primary identifiers
-    'IdMovement', 'FlightNumberNormalized', 'IdTraficType', 
+    'IdADL', 'IdMovement', 'FlightNumberNormalized', 'IdTraficType', 
     'IdBusinessUnitType', 'LTScheduledDatetime', 'Direction', 'Terminal',
     
     # Airline and route information

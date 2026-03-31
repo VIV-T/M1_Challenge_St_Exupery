@@ -39,7 +39,8 @@ class PaxModel:
 
     def train(self, X: pd.DataFrame, y: pd.Series, 
               X_val: Optional[pd.DataFrame] = None, 
-              y_val: Optional[pd.Series] = None) -> None:
+              y_val: Optional[pd.Series] = None,
+              silent: bool = False) -> None:
         """
         Train the model to predict occupancy factor (passengers/seat ratio).
         
@@ -71,11 +72,11 @@ class PaxModel:
             X, y_transformed,
             eval_set=eval_set,
             eval_metric='mae',
-            callbacks=[lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS)] if eval_set else []
+            callbacks=[lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=not silent)] if eval_set else []
         )
         
         # Calculate and report validation metrics
-        if eval_set:
+        if eval_set and not silent:
             occ_pred = self.model.predict(X_val)
             y_pred = occ_pred * X_val['NbOfSeats']
             mae = mean_absolute_error(y_val, y_pred)
@@ -120,7 +121,8 @@ class PRMModel:
 
     def train(self, X: pd.DataFrame, y: pd.Series,
               X_val: Optional[pd.DataFrame] = None,
-              y_val: Optional[pd.Series] = None) -> None:
+              y_val: Optional[pd.Series] = None,
+              silent: bool = False) -> None:
         """
         Train the PRM prediction model.
         
@@ -143,11 +145,11 @@ class PRMModel:
             X, y,
             eval_set=eval_set,
             eval_metric='mae',
-            callbacks=[lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS)] if eval_set else []
+            callbacks=[lgb.early_stopping(stopping_rounds=EARLY_STOPPING_ROUNDS, verbose=not silent)] if eval_set else []
         )
         
         # Report validation performance
-        if X_val is not None:
+        if X_val is not None and not silent:
             y_pred = self.model.predict(X_val)
             mae = mean_absolute_error(y_val, y_pred)
             print(f"  PRM LightGBM Validation MAE: {mae:.2f}")

@@ -41,16 +41,13 @@ def load_dataset(file_path: str = DATA_FILE) -> pd.DataFrame:
     """
     if USE_BIGQUERY:
         df = _load_from_bigquery()
-        print("  ✅ Loaded live data from BigQuery")
     else:
         # Fallback to Local CSV
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Missing input dataset: {file_path}")
             
-        print(f"Loading Local Snapshot: {file_path}...")
         df = pd.read_csv(file_path, low_memory=False, usecols=LOAD_COLUMNS)
         df = _normalize_schema(df)
-        print("  ✅ Loaded local CSV snapshot")
     
     # Apply external data enrichment
     df = _enrich_with_external_data(df)
@@ -67,7 +64,6 @@ def _load_from_bigquery() -> pd.DataFrame:
     Returns:
         DataFrame with live BigQuery data
     """
-    print(f"Syncing Live BigQuery Dataset: {BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}...")
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = BQ_CREDS
     
     # Initialize Standard Client
@@ -83,19 +79,10 @@ def _load_from_bigquery() -> pd.DataFrame:
 
 def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Standardizes data types, filters commercial flights, and ensures data quality.
-    
-    This function applies consistent schema normalization regardless of data source:
+    Standardizes data types and identifies commercial vs non-commercial flights.
     - Standardizes datetime formats
-    - Filters to commercial flights only
-    - Removes technical/ferry flights
+    - Identifies commercial vs freight/ferry flights using `is_commercial` flag
     - Ensures target variable consistency
-    
-    Args:
-        df: Raw DataFrame from BigQuery or CSV
-        
-    Returns:
-        Normalized DataFrame with commercial flights only
     """
     # Standardize Chronological Index (Force ns precision for merge compatibility)
     df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.tz_localize(None).astype('datetime64[ns]')
@@ -106,30 +93,27 @@ def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df['NbPRMTotal'] = 0
     
-    # Filter Commercial Flights (Exclude Ferry/Technical/Non-Pax)
-    initial_count = len(df)
-    
+    # Identify Commercial Flights (Exclude Ferry/Technical/Non-Pax)
     # Apply commercial flight filters based on business rules
-    commercial_mask = (
+    df['is_commercial'] = (
         df['ServiceCode'].isin(VALID_SERVICE_CODES) &  # Valid service types
         (df['IdBusinessUnitType'] == COMMERCIAL_BUSINESS_UNIT) &  # Commercial business unit
         (df['NbOfSeats'] > MIN_SEATS_FOR_COMMERCIAL) &  # Has seating capacity
-        (df['flight_with_pax'].fillna('Non') == FLIGHT_WITH_PAX_INDICATOR)  # Carries passengers
+        # For future flights, flight_with_pax is NULL. Accept NULL or 'Oui '.
+        (df['flight_with_pax'].isnull() | (df['flight_with_pax'] == FLIGHT_WITH_PAX_INDICATOR))
     )
-    
-    df = df[commercial_mask].copy()
-    
-    # For backtesting, only keep flights with realized passenger counts
-    if 'NbPaxTotal' in df.columns:
-        df = df[df['NbPaxTotal'] > 0].copy()
-        
-    filtered_count = initial_count - len(df)
-    print(f"  Processed {len(df):,} commercial flights ({filtered_count:,} ferry/technical filtered).")
     
     # Initialize high-quality identifiers
     df['OperatorOACICodeNormalized'] = df['airlineOACICode'].fillna('UNKNOWN')
     
-    return df
+    # Deduplicate by IdADL to ensure stable matching for evaluation
+    # First drop cases with missing IdADL as they cannot be accurately backtested
+    df = df.dropna(subset=['IdADL'])
+    df = df.drop_duplicates(subset=['IdADL'])
+    
+    return df.reset_index(drop=True)
+
+
 
 def _enrich_with_external_data(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -175,7 +159,6 @@ def _add_weather_signals(df: pd.DataFrame) -> pd.DataFrame:
     """
     from saint_ex.config import WEATHER_FILE
     if not os.path.exists(WEATHER_FILE):
-        print(f"  ⚠️ Weather file missing at {WEATHER_FILE}. Skipping join.")
         return df
 
     weather = pd.read_csv(WEATHER_FILE)
@@ -223,7 +206,6 @@ def _add_school_holidays(df: pd.DataFrame) -> pd.DataFrame:
     """
     from saint_ex.config import SCHOOL_CAL_FILE
     if not os.path.exists(SCHOOL_CAL_FILE):
-        print(f"  ⚠️ School calendar file missing at {SCHOOL_CAL_FILE}. Skipping.")
         return df
     
     school_cal = pd.read_csv(SCHOOL_CAL_FILE)
@@ -265,7 +247,6 @@ def _add_national_holidays(df: pd.DataFrame) -> pd.DataFrame:
         AIRPORTS = airportsdata.load('IATA')
     except Exception:
         AIRPORTS = {}
-        print("  ⚠️ airportsdata package not available. Country mapping limited.")
 
     def get_country(iata_code: str) -> Optional[str]:
         """Get country code from IATA airport code."""
@@ -297,30 +278,35 @@ def _add_national_holidays(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=['date', 'origin_country', 'dest_country'])
     return df
 
-def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15, snapshot_date: Optional[str] = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Performs chronological temporal split of the dataset.
-    
-    This function implements proper temporal validation to prevent data leakage:
-    - Training data: Historical period up to validation start
-    - Validation data: Most recent historical period (chronological)
-    - Inference pool: Future period for blind testing
-    
-    The split respects the INFERENCE_START_DATE configuration and ensures
-    no future information contaminates training data.
     
     Args:
         df: Complete dataset with temporal ordering
         val_ratio: Fraction of historical data to use for validation
+        snapshot_date: Optional override for the inference start date (used for backtesting)
         
     Returns:
         Tuple of (train_df, val_df, inference_df) with chronological splits
     """
-    snapshot_cutoff = pd.to_datetime(INFERENCE_START_DATE)
+    if snapshot_date:
+        snapshot_cutoff = pd.to_datetime(snapshot_date)
+    else:
+        snapshot_cutoff = pd.to_datetime(INFERENCE_START_DATE)
     
     # Separate historical from future data
     historical = df[df['LTScheduledDatetime'] < snapshot_cutoff].copy()
     inference = df[df['LTScheduledDatetime'] >= snapshot_cutoff].copy()
+    
+    # IMPORTANT: Historical training/validation data MUST have realized labels and be commercial
+    if 'NbPaxTotal' in historical.columns:
+        historical = historical[
+            historical['is_commercial'] & 
+            historical['NbPaxTotal'].notna() & 
+            (historical['NbPaxTotal'] > 0)
+        ].copy()
+
     
     # Split historical data into train/validation chronologically
     historical = historical.sort_values(by='LTScheduledDatetime')
@@ -328,12 +314,5 @@ def split_historical_inference(df: pd.DataFrame, val_ratio: float = 0.15) -> Tup
     
     train = historical.iloc[:cutoff_idx].copy()
     val = historical.iloc[cutoff_idx:].copy()
-    
-    # Display split information
-    print("\nSplitting dynamic data stream...")
-    print(f"  Training Range: {historical['LTScheduledDatetime'].min()} -> {historical['LTScheduledDatetime'].max()}")
-    print(f"    - train     : {len(train):,}")
-    print(f"    - validation: {len(val):,}")
-    print(f"  Inference Pool: {len(inference):,}")
     
     return train, val, inference
