@@ -24,8 +24,11 @@ There are 5 different types of features created in this script:
 import pandas as pd
 import numpy as np 
 from datetime import date
+from typing import cast
+import numpy.typing as npt
 
-TARGET = "NbPaxTotal"
+
+TARGET = "FarmsNbPaxPHMR"
 # trimester and semester missing for now, as they are not really useful with the current features, and they can be easily added later if needed (based on the month feature)
 
 # Column configurations
@@ -33,8 +36,7 @@ COLUMN_LIST_BASE = [
     "FlightNumberNormalized", 
     "airlineOACICode",
     "IdAircraftType",
-    "SysTerminal", 
-    "Direction"
+    "SysTerminal"
     ]
 
 
@@ -50,15 +52,13 @@ ROLLING_CONFIG = {
     "year": "365D"
 }
 
-
 # Lags configuration
 CUSTOM_LAGS = {
     "1year": pd.DateOffset(years=1),
     "6months": pd.DateOffset(months=6),
     "3months": pd.DateOffset(months=3),
     "1month": pd.DateOffset(months=1),
-    "1week": pd.DateOffset(weeks=1),
-    "1day": pd.DateOffset(days=1)
+    "1week": pd.DateOffset(weeks=1)
 }
 
 # Trend features configuration
@@ -82,6 +82,12 @@ ROLLING_LAGS_CONFIG = {
 
 
 def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
+        """
+        The function to add temporal features.
+        It allow to slice the ScheduledDatetime feature into another set of features.
+
+        Add of cyclical encoding using cosinus and sinus functions. It allows us to have a continuity between time cycle (example: 12 pm is close to 1 am)
+        """
         df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime'])
         # Creation of date related features
         df["Year"] = pd.to_datetime(df['LTScheduledDatetime']).dt.year
@@ -93,7 +99,6 @@ def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
         df["Minute"] = pd.to_datetime(df['LTScheduledDatetime']).dt.minute
         df["DayOfWeek"] = pd.to_datetime(df['LTScheduledDatetime']).dt.dayofweek
         df['Hour_Of_Week'] = df['LTScheduledDatetime'].dt.dayofweek * 24 + df['LTScheduledDatetime'].dt.hour
-        # df['Avg_Pax_Hour_Week'] = df.groupby('Hour_Of_Week')[TARGET].transform('mean')
 
         # Cyclical encoding
         # the cyclical encoding for hours is here on a base of 60 minutes, but we can also do it on a base of 24h, or even 168h (hour of the week)
@@ -102,48 +107,47 @@ def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
             df[f'cos_{col}'] = np.cos(2 * np.pi * df[col] / period)
             df = df.drop(columns=[col])
 
-        return df 
+        return df
 
 def add_lag_features(df: pd.DataFrame, group_cols: list, lags: dict) -> pd.DataFrame:
-    # 1. NETTOYAGE DES TYPES
+    """
+    Lags features are statistics calculated using a lag (1 day, 1 month, ...) and a group argument (ex: IdAircraftType).
+    Example: Value calculated = 1 month before, the average NbPaxTotal group by IdAircraftType.
+    """
+    # Type cleaning
     for col in group_cols:
         df[col] = df[col].astype(str)
-    
     df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime'], utc=True).dt.tz_localize(None).dt.floor('min')
 
-
+    # Statistics calculation using STATISTICS_LIST
     for lag_name, offset in lags.items():
-        # 2. CALCUL DU RÉFÉRENTIEL
-        # Utiliser un dictionnaire {TARGET: stats} résout l'erreur Pylance
         temp_df = (
             df.groupby(group_cols + ['LTScheduledDatetime'])
             .agg({TARGET: STATISTICS_LIST})
             .reset_index()
         )
 
-        # Après l'agrégation sur une seule colonne avec une liste, 
-        # Pandas crée souvent un MultiIndex pour les colonnes. On l'aplatit.
+        # Avoid pandas multi-index.
         temp_df.columns = group_cols + ['LTScheduledDatetime'] + STATISTICS_LIST
 
-        # 3. APPLICATION DU LAG
+        # Lag application
         temp_df['LTScheduledDatetime'] = temp_df['LTScheduledDatetime'] + offset
         
-        # 4. RÉ-AGRÉGATION (Gestion des collisions après shift)
-        # On regroupe par date et on moyenne les statistiques calculées
+        # Re-aggregate, using min, the calculated statistics. Using 'mean' allow us to smooth the aggregation of the calculated statistics.
         temp_df = (
             temp_df.groupby(group_cols + ['LTScheduledDatetime'])
             .agg({s: 'mean' for s in STATISTICS_LIST})
             .reset_index()
         )
 
-        # 5. RENOMMAGE FINAL
+        # Rename the column associated to calculated stats. 
         rename_dict = {
             s: f"{'_'.join(group_cols)}_lag_{lag_name}_{s}" 
             for s in STATISTICS_LIST
         }
         temp_df = temp_df.rename(columns=rename_dict)
 
-        # 6. MERGE
+        # Merge with the main df : allow to retrieve the calculated stats in the main df.
         df = pd.merge(
             df, 
             temp_df, 
@@ -168,19 +172,21 @@ def add_rolling_features(df: pd.DataFrame, group_cols: list, windows: dict) -> p
                Ex: {"month": "30D", "quarter": "91D", "semester": "182D", "year": "365D"}
     """
     # 1. Tri indispensable
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime'])
+    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
     
     # 2. Indexation temporelle sur une copie pour le calcul par offset
-    df_indexed = df.set_index('LTScheduledDatetime')
+    df_indexed = df.set_index('LTScheduledDatetime').sort_index()
     
     # Liste des stats à calculer
     stats_list = ['mean', 'min', 'max', 'std', 'median']
     
     for name, window_size in windows.items():
         # 3. Groupement et création de la fenêtre glissante
+        # Most important argument
         # closed='left' est crucial pour éviter le Data Leakage
         rolling_group = (
             df_indexed.groupby(group_cols)[TARGET]
+            .shift(1)   # the data of yesterday have to be used for tiomorrow's predictions (not today's data)
             .rolling(window=window_size, closed='left', min_periods=1)
         )
         
@@ -212,14 +218,15 @@ def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D"
     Calcule les ratios de tendance (Trend = Valeur_Courte / Valeur_Longue)
     pour chaque statistique de STATISTICS_LIST.
     """
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime'])
-    df_indexed = df.set_index('LTScheduledDatetime')
+    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
+    df_indexed = df.set_index('LTScheduledDatetime').sort_index()
     
     stats_list = ['mean', 'min', 'max', 'std', 'median']
     
     # 1. Calcul groupé des agrégations
     short_rolling = (
         df_indexed.groupby(group_cols)[TARGET]
+        .shift(1)
         .rolling(window=short_win, closed='left', min_periods=1)
         .agg(stats_list)
         .reset_index()
@@ -227,6 +234,7 @@ def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D"
     
     long_rolling = (
         df_indexed.groupby(group_cols)[TARGET]
+        .shift(1)
         .rolling(window=long_win, closed='left', min_periods=1)
         .agg(stats_list)
         .reset_index()
@@ -262,7 +270,6 @@ def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D"
     
     return df
 
-
 def add_lagged_rolling_features(df: pd.DataFrame, group_cols: list, lag: str, window: str, new_col_name: str) -> pd.DataFrame:
     """
     Calcule des statistiques mobiles (STATISTICS_LIST), puis les décale dans le temps.
@@ -271,10 +278,10 @@ def add_lagged_rolling_features(df: pd.DataFrame, group_cols: list, lag: str, wi
     # 1. Préparation et tri
     # On s'assure que les dates sont propres et sans timezone pour éviter les erreurs de merge
     df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.floor('min')
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime'])
+    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
     
     # 2. Calcul des stats mobiles sur le flux actuel
-    df_temp = df.set_index('LTScheduledDatetime')
+    df_temp = df.set_index('LTScheduledDatetime').sort_index()
     
     # Liste des statistiques demandées
     stats_list = ['mean', 'min', 'max', 'std', 'median']
@@ -318,13 +325,6 @@ def add_lagged_rolling_features(df: pd.DataFrame, group_cols: list, lag: str, wi
     gc.collect()
     
     return df
-
-
-
-from typing import cast
-import numpy as np
-import numpy.typing as npt
-import pandas as pd
 
 def add_interaction_features(df: pd.DataFrame, base_col: str, feature_pattern: str, suffix: str = "x") -> pd.DataFrame:
     # 1. Identification des colonnes cibles
@@ -378,8 +378,6 @@ def add_interaction_features(df: pd.DataFrame, base_col: str, feature_pattern: s
         df = pd.concat([df, new_df], axis=1)
     
     return df
-
-
 
 def add_momentum_features(df: pd.DataFrame, short_term_pattern: str, long_term_pattern: str, suffix: str = "div") -> pd.DataFrame:
     """
@@ -436,8 +434,6 @@ def add_momentum_features(df: pd.DataFrame, short_term_pattern: str, long_term_p
         
     return df
 
-
-
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Main function to add new features. 
@@ -469,35 +465,6 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         ### 5. Trend features (Ratios internes au rolling actuel)
         for short_win, long_win in TREND_CONFIG:
             df = add_trend_features(df, group_cols=[col], short_win=short_win, long_win=long_win)
-
-        # --- NOUVEAU : MOMENTUM FEATURES ---
-        # On compare les horizons temporels entre eux pour chaque colonne de base
-        
-        # A. Dynamique de court terme (Ex: accélération de la semaine vs le mois)
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_week', 
-                                   long_term_pattern='rolling_month', 
-                                   suffix="accel")
-
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_month', 
-                                   long_term_pattern='rolling_quarter', 
-                                   suffix="month_ratio")
-        
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_quarter', 
-                                   long_term_pattern='rolling_year', 
-                                   suffix="season_ratio")
-
-        df = add_momentum_features(df, 
-                           short_term_pattern='lag91_win20', 
-                           long_term_pattern='lag365_win28', 
-                           suffix="year_over_year")
-        
-        df = add_momentum_features(df, 
-                           short_term_pattern='lag30_win14', 
-                           long_term_pattern='lag91_win20', 
-                           suffix="short_vs_mid_hist")
 
     ### 6. Interaction features (Poids capacité)
     # On multiplie NbOfSeats par les moyennes (incluant les nouvelles colonnes de momentum)

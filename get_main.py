@@ -36,7 +36,7 @@ SysTerminal,
 FuelProvider,
 ScheduleType,
 NbOfSeats,
-NbPaxTotal,
+NbPaxTotal, 
 etl_origin
 """
 
@@ -102,4 +102,4 @@ if __name__ == "__main__":
     )
 
     print(df_res)
-    df_res.to_csv("data/main.csv", encoding='utf-8', index=False)
+    df_res.to_csv("data/main_PHMR.csv", encoding='utf-8', index=False)
