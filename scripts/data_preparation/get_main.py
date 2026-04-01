@@ -10,6 +10,9 @@ import sys
 root_path = Path.cwd()
 sys.path.append(str(root_path))
 
+import logging
+logger = logging.getLogger(__name__)
+
 # ------------- Global variable -------------
 
 root = Path(__file__).parent.parent.parent
@@ -79,13 +82,13 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
         service_account_key_path (str): Le chemin vers le fichier JSON de la clé du compte de service.
     """
     try:
-        # Configure les identifiants du compte de service
+        # Id of the account - Configuration
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_key_path
 
-        # Construit la référence complète de la table
+        # Build of the complete table reference - fro BigQuery
         table_ref = f"`{project_id}.{dataset_id}.{table_id}`"
 
-        # Construit la requête SQL
+        # SQL Query
         query = f"SELECT {column_list} FROM {table_ref}  {additional_condition}" 
 
         ### Way 1 to query the database.        
@@ -97,13 +100,13 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
 
         ### Way 2 to query the database. 
         # Query execution using "pandas_gbq".
-        print(f"Query execution: \n{query}\n")
+        logger.info(f"Query execution: \n{query}\n")
         df_res = pd.DataFrame(pandas_gbq.read_gbq(query, project_id=project_id))
 
         return df_res
 
     except Exception as e:
-        print(f"Une erreur est survenue: {e}")
+        logger.error(f"Error: {e}")
         return pd.DataFrame()
 
 
@@ -116,7 +119,6 @@ def main_query_db():
         service_account_key_path=YOUR_SERVICE_ACCOUNT_KEY_PATH
     )
 
-    print(df_res)
     df_res.to_csv(DATA_FILENAME, encoding='utf-8', index=False)
 
 

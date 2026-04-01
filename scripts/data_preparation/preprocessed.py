@@ -1,15 +1,10 @@
-"""
-Condition to run this script, run:
-    - get_main.py
-
-Purpose of the script:
-    Prepare the final dataset, ready for training, with additional columns using or not external data souorces.
-"""
-
 ### Imports
 import pandas as pd
 from pathlib import Path
 import os 
+
+import logging
+logger = logging.getLogger(__name__)
 
 # Personal imports
 from scripts.data_preparation.utils.holidays.env_variables import FEATURE_NAME_AIRPORT_CODE
@@ -26,13 +21,14 @@ holidays_filename = Path(os.path.join(data_folder, "holidays.csv"))
 
 
 
-def main_preprocessed(data_old_filename = main_old_filename, main_new_filename = main_new_filename, with_holidays : bool =False) -> pd.DataFrame :
+def main_preprocessed(data_old_filename = main_old_filename, main_new_filename = main_new_filename, with_holidays : bool =False) :
     # initialization
     data = pd.read_csv(data_old_filename, encoding='utf-8')
 
 
     ### Holidays
-    if with_holidays :  # depends if we want to use the holiday preprocessing ? 
+    if with_holidays :  # depends if we want to use the holiday preprocessing ? NO - lower results 
+        logger.info('Holidays features creation')
         if holidays_filename.exists : 
             data_holidays = pd.read_csv(holidays_filename, encoding='utf-8')
         else:
@@ -44,13 +40,13 @@ def main_preprocessed(data_old_filename = main_old_filename, main_new_filename =
 
         ##### Carreful - cf. data.shape (nb rows before/ after the merge)
         # Inner join of the current dataset and the holidays one, we keep only the shared flight.
-        # Why? the preprocessed performed on the holdidays dataset also applied to our main data.
-        # Number of row: 365005 to 337375       -> find the reason why
-        # print(data.shape)
+        # Why? the preprocessed performed on the holdidays dataset also applied to our main data. (doesn't really change the number of lines - but it allows to avoid NA among dates)
         data = pd.merge(data, data_holidays, on=["LTScheduledDatetime", FEATURE_NAME_AIRPORT_CODE], how="inner")
-        # print(data.shape)
+
     
+
     ### Splitting the two dataset, one for NbPaxTotal, an other for PHMR
+    logger.info("Data split - PHMR management")
     data_Pax = data.drop(columns=["FarmsNbPaxPHMR"])
     data_PHMR = data.drop(columns=["NbPaxTotal"])
 

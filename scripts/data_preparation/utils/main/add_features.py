@@ -23,12 +23,12 @@ There are 7 different types of features created in this script:
 ### Imports
 import pandas as pd
 import numpy as np 
-from datetime import date
 from typing import cast
 import numpy.typing as npt
 import gc
 
-
+import logging
+logger = logging.getLogger(__name__)
 
 ### Configuration
 TARGET = "NbPaxTotal"
@@ -378,7 +378,7 @@ def add_interaction_features(df: pd.DataFrame, base_col: str, feature_pattern: s
         if base_vals.shape[0] == feat_vals.shape[0]:
             new_interactions[new_col_name] = base_vals * feat_vals
         else:
-            print(f"Saut de la colonne {col} : dimensions incompatibles.")
+            logger.warning(f"Saut de la colonne {col} : dimensions incompatibles.")
 
     if not new_interactions:
         return df
@@ -392,7 +392,7 @@ def add_interaction_features(df: pd.DataFrame, base_col: str, feature_pattern: s
         df = pd.concat([df, new_df], axis=1)
     except ValueError:
         # If "duplicate labels", synchronization using 'reset_index'
-        print(f"Index dupliqués détectés lors de l'interaction {feature_pattern}. Correction en cours...")
+        logger.warning(f"Index dupliqués détectés lors de l'interaction {feature_pattern}. Correction en cours...")
         df = df.reset_index(drop=True)
         new_df.index = df.index
         df = pd.concat([df, new_df], axis=1)
@@ -451,7 +451,7 @@ def add_momentum_features(df: pd.DataFrame, short_term_pattern: str, long_term_p
         new_df = pd.DataFrame(new_momentum, index=df.index)
         df = pd.concat([df, new_df], axis=1)
     else:
-        print(f"No correspondances between {short_term_pattern} & {long_term_pattern}")
+        logger.warning(f"No correspondances between {short_term_pattern} & {long_term_pattern}")
         
     return df
 
@@ -466,6 +466,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.reset_index(drop=True)
 
     ### Date related features
+    logger.info("Add of date related features")
     df = date_columns_creation(df=df)
 
     for col in COLUMN_LIST_BASE:
@@ -489,6 +490,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         for short_win, long_win in TREND_CONFIG:
             df = add_trend_features(df, group_cols=[col], short_win=short_win, long_win=long_win)
 
+    logger.info('Dedicated features added')
         
     ### Momentum features
     # recent momentum
@@ -509,16 +511,12 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
                                 long_term_pattern='rolling_year', 
                                 suffix="season_ratio")
 
+    logger.info('Momentum features added')
 
     ### 6. Interaction features ("NbSeats" * calculated means)
     df = add_interaction_features(df, base_col="NbOfSeats", feature_pattern="_mean")
+    logger.info('Interaction features added')
 
     return df
 
 
-
-### Test 
-# if __name__ == "__main__":
-#     df = pd.read_csv("data/main.csv")
-#     df = add_features(df)
-#     df.to_csv("data/main_preprocessed_new.csv", index=False)
