@@ -88,7 +88,7 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
 
 
 # ------------- Script configuration and execution -------------
-if __name__ == "__main__":
+def main_query_db():
     YOUR_PROJECT_ID = "va-sdh-adl-staging"
     YOUR_DATASET_ID = "aero_insa"
     YOUR_TABLE_ID = "mouvements_aero_insa"
@@ -103,3 +103,7 @@ if __name__ == "__main__":
 
     print(df_res)
     df_res.to_csv("data/main.csv", encoding='utf-8', index=False)
+
+
+# if __name__ == "__main__":
+#     main_query_db()

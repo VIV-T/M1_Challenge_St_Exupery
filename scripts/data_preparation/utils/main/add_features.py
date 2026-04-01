@@ -490,32 +490,30 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
             df = add_trend_features(df, group_cols=[col], short_win=short_win, long_win=long_win)
 
         
-        ### Momentum features
-        # recent momentum
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_week', 
-                                   long_term_pattern='rolling_month', 
-                                   suffix="accel")
+    ### Momentum features
+    # recent momentum
+    df = add_momentum_features(df, 
+                                short_term_pattern='rolling_week', 
+                                long_term_pattern='rolling_month', 
+                                suffix="accel")
 
-        # middle term momentum
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_month', 
-                                   long_term_pattern='rolling_quarter', 
-                                   suffix="month_ratio")
-        
-        # long term momentum
-        df = add_momentum_features(df, 
-                                   short_term_pattern='rolling_quarter', 
-                                   long_term_pattern='rolling_year', 
-                                   suffix="season_ratio")
+    # middle term momentum
+    df = add_momentum_features(df, 
+                                short_term_pattern='rolling_month', 
+                                long_term_pattern='rolling_quarter', 
+                                suffix="month_ratio")
+    
+    # long term momentum
+    df = add_momentum_features(df, 
+                                short_term_pattern='rolling_quarter', 
+                                long_term_pattern='rolling_year', 
+                                suffix="season_ratio")
 
 
     ### 6. Interaction features ("NbSeats" * calculated means)
     df = add_interaction_features(df, base_col="NbOfSeats", feature_pattern="_mean")
 
     return df
-
-
 
 
 
