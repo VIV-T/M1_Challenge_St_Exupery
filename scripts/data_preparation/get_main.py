@@ -26,40 +26,40 @@ YOUR_SERVICE_ACCOUNT_KEY_PATH = os.path.join(CONFIG_FOLDER_PATH, "va-sdh-adl-sta
 
 
 column_list = """
-IdMovement,
-IdADL,
-IdAircraftType,
-IdBusinessUnitType,
-IdBusContactType,
-IdTerminalType,
-IdBagStatusDelivery,
-NbFlight,
-AirportCode,
-airlineOACICode,
-SysStopover,
-AirportOrigin,
-AirportPrevious,
-ServiceCode,
-flightNumber,
-OperatorFlightNumber,
-FlightNumberNormalized,
-OperatorOACICodeNormalized,
-LTScheduledDatetime,
-LTScheduledTime,
-LTExternalDatetime,
-LTExternalDate,
-LTExternalTime,
-Direction,
-Terminal,
-SysTerminal,
-FuelProvider,
-ScheduleType,
-NbOfSeats,
-NbPaxTotal,
-etl_origin, 
-"""
+    IdMovement,
+    IdADL,
+    IdAircraftType,
+    IdBusinessUnitType,
+    IdBusContactType,
+    IdTerminalType,
+    IdBagStatusDelivery,
+    NbFlight,
+    AirportCode,
+    airlineOACICode,
+    SysStopover,
+    AirportOrigin,
+    AirportPrevious,
+    ServiceCode,
+    flightNumber,
+    OperatorFlightNumber,
+    FlightNumberNormalized,
+    OperatorOACICodeNormalized,
+    LTScheduledDatetime,
+    LTScheduledTime,
+    LTExternalDatetime,
+    LTExternalDate,
+    LTExternalTime,
+    Direction,
+    Terminal,
+    SysTerminal,
+    FuelProvider,
+    ScheduleType,
+    NbOfSeats,
+    NbPaxTotal,
+    FarmsNbPaxPHMR,
+    etl_origin, 
+    """
 
-# FarmsNbPaxPHMR for PHMR
 
 additional_condition = """
 ORDER BY LTScheduledDatetime DESC
@@ -89,7 +89,7 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
         query = f"SELECT {column_list} FROM {table_ref}  {additional_condition}" 
 
         ### Way 1 to query the database.        
-        # # Initialise le client BigQuery
+        # Initialise le client BigQuery
         # client = bigquery.Client(project=project_id)
         # query_job = client.query(query)
         # # Récupère les résultats

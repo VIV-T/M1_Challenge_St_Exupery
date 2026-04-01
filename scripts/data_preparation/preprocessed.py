@@ -21,6 +21,7 @@ data_folder = os.path.join(Path(__file__).parent.parent.parent, "data")
 config_folder = os.path.join(Path(__file__).parent.parent.parent, "config")
 main_old_filename = os.path.join(data_folder, "main.csv")
 main_new_filename = os.path.join(data_folder, "main_preprocessed.csv")
+main_new_filename_PHMR = os.path.join(data_folder, "main_preprocessed_PHMR.csv")
 holidays_filename = Path(os.path.join(data_folder, "holidays.csv"))
 
 
@@ -49,15 +50,18 @@ def main_preprocessed(data_old_filename = main_old_filename, main_new_filename =
         data = pd.merge(data, data_holidays, on=["LTScheduledDatetime", FEATURE_NAME_AIRPORT_CODE], how="inner")
         # print(data.shape)
     
-    
-    
-    ### Main - add of features (stats computation)
-    final_df = add_features(df=data)  
+    ### Splitting the two dataset, one for NbPaxTotal, an other for PHMR
+    data_Pax = data.drop(columns=["FarmsNbPaxPHMR"])
+    data_PHMR = data.drop(columns=["NbPaxTotal"])
+
+    ### Main - add of features (stats computation) / Only for NbPaxTotal
+    data_Pax = add_features(df=data_Pax)  
 
     # save 
-    final_df.to_csv(main_new_filename, encoding='utf-8', index=False)
+    data_Pax.to_csv(main_new_filename, encoding='utf-8', index=False)
+    data_PHMR.to_csv(main_new_filename_PHMR, encoding='utf-8', index=False)
 
-    return final_df
+    return data_Pax, data_PHMR
 
 
 # ## Test
