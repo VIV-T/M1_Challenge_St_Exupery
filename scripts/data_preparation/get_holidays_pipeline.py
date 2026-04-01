@@ -18,14 +18,7 @@ filename = os.path.join(data_folder, "main.csv")
 CODE_LIST_FR = ["FR", "LF", "GP", "MQ", "RE"] # metroplitan codes + islands and extra-marine territories
 FEATURE_NAME_AIRPORT_CODE_DEPARTURE = "AirportDeparture"
 
-# data import and light preprocessing
-data = pd.read_csv(filename, encoding="utf-8")
-data = data[data['IdBusinessUnitType'] == 1] # Limit to commercial (passenger) flight for prediction
 
-# New column creation - to manage the holidays columns
-# Only the holidays of the departure are interresting to predict the potential number of Pax.
-# People decide to travel when they are on vacations, not when the locals are in vacations.
-data[FEATURE_NAME_AIRPORT_CODE_DEPARTURE] = np.where(data['Direction'] == "Départ", "LYS", data[FEATURE_NAME_AIRPORT_CODE])
 
 # define the function to execute SQL queries on a pandas df.
 pysqldf = lambda q: sqldf(q, globals())
@@ -133,6 +126,16 @@ def add_public_holidays(df: pd.DataFrame) -> pd.DataFrame:
 
 ### Main code
 def main_holiday_pipeline() -> pd.DataFrame : 
+    # data import and light preprocessing
+    data = pd.read_csv(filename, encoding="utf-8")
+    # New column creation - to manage the holidays columns
+    # Only the holidays of the departure are interresting to predict the potential number of Pax.
+    # People decide to travel when they are on vacations, not when the locals are in vacations.
+    data[FEATURE_NAME_AIRPORT_CODE_DEPARTURE] = np.where(data['Direction'] == "Départ", "LYS", data[FEATURE_NAME_AIRPORT_CODE])
+
+    # data = data[data['IdBusinessUnitType'] == 1] # Limit to commercial (passenger) flight for prediction
+
+
     df_main_simplify = get_main_simplify(data=data)
     df_code_infos = get_code_infos(main_simplify_df=df_main_simplify)
 

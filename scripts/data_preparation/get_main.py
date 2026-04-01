@@ -2,9 +2,28 @@ import os
 from google.cloud import bigquery
 import pandas as pd
 import pandas_gbq
+from pathlib import Path
+import os 
 
+import sys
+
+root_path = Path.cwd()
+sys.path.append(str(root_path))
 
 # ------------- Global variable -------------
+
+root = Path(__file__).parent.parent.parent
+DATA_FOLDER_PATH = os.path.join(root, "data")
+DATA_FILENAME = os.path.join(DATA_FOLDER_PATH, "main.csv")
+CONFIG_FOLDER_PATH = os.path.join(root, "config")
+
+
+# Config BigQuery
+YOUR_PROJECT_ID = "va-sdh-adl-staging"
+YOUR_DATASET_ID = "aero_insa"
+YOUR_TABLE_ID = "mouvements_aero_insa"
+YOUR_SERVICE_ACCOUNT_KEY_PATH = os.path.join(CONFIG_FOLDER_PATH, "va-sdh-adl-staging.json")
+
 
 column_list = """
 IdMovement,
@@ -37,9 +56,10 @@ FuelProvider,
 ScheduleType,
 NbOfSeats,
 NbPaxTotal,
-etl_origin
+etl_origin, 
 """
 
+# FarmsNbPaxPHMR for PHMR
 
 additional_condition = """
 ORDER BY LTScheduledDatetime DESC
@@ -89,11 +109,6 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
 
 # ------------- Script configuration and execution -------------
 def main_query_db():
-    YOUR_PROJECT_ID = "va-sdh-adl-staging"
-    YOUR_DATASET_ID = "aero_insa"
-    YOUR_TABLE_ID = "mouvements_aero_insa"
-    YOUR_SERVICE_ACCOUNT_KEY_PATH = "config/va-sdh-adl-staging.json"
-
     df_res = query_bigquery_table(
         project_id=YOUR_PROJECT_ID,
         dataset_id=YOUR_DATASET_ID,
@@ -102,8 +117,8 @@ def main_query_db():
     )
 
     print(df_res)
-    df_res.to_csv("data/main.csv", encoding='utf-8', index=False)
+    df_res.to_csv(DATA_FILENAME, encoding='utf-8', index=False)
 
 
-# if __name__ == "__main__":
-#     main_query_db()
+if __name__ == "__main__":
+    main_query_db()
