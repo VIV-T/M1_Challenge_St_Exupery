@@ -1,4 +1,4 @@
-"""
+﻿"""
 Explainations:
 This python script allow us to add new features to our main dataset, based on the existing ones. 
 The new features are created by calling the different functions defined in the "add_features.py" file, and can be easily modified by changing the parameters of these functions.
@@ -35,11 +35,10 @@ TARGET = "NbPaxTotal"
 
 # Column configurations
 COLUMN_LIST_BASE = [
+    "SysTerminal",
+    "IdAircraftType",
     "FlightNumberNormalized", 
     "airlineOACICode",
-    "IdAircraftType",
-    "SysTerminal", 
-    # Direction 
     ]
 
 # Statistics to calculate for the lag features
@@ -54,13 +53,13 @@ CUSTOM_LAGS = {
     "1week": pd.DateOffset(weeks=1)
 }
 
-# Rolling configuration
+# Rolling configuration - values = number of days
 ROLLING_CONFIG = {
-    "week": "7D",
-    "month": "30D",
-    "quarter": "91D",
-    "semester": "182D",
-    "year": "365D"
+    "week": 7,
+    "month": 30,
+    "quarter": 91,
+    "semester": 182,
+    "year": 365
 }
 
 # Trend features configuration
@@ -115,58 +114,84 @@ def date_columns_creation(df : pd.DataFrame) -> pd.DataFrame:
 
 def add_lag_features(df: pd.DataFrame, group_cols: list, lags: dict) -> pd.DataFrame:
     """
-    Lags features are statistics calculated using a lag (1 day, 1 month, ...) and a group argument (ex: IdAircraftType).
+    Lags features are brut values of previous date (1 day, 1 month, ...) and a group argument (ex: IdAircraftType).
     Example: Value calculated = 1 month before, the average NbPaxTotal group by IdAircraftType.
-
+    No need of STATISTIC_LIST here => 'Retrieve the raw value for this specific group at that exact moment in the past.'
+    
     Params:
     - df: DataFrame with features 'LTScheduledDatetime' & TARGET.
     - group_cols: features used for grouping and aggregation.
     - lags: Dict CUSTOM_LAGS
     """
+    ### Small view & light computation (RAM friendly)
+    # Naming convention
+    prefix = "_".join(group_cols) if group_cols else "global"
+
+    # Smaller version of the df
+    merge_keys = group_cols + ['LTScheduledDatetime']
+    temp_base = df[merge_keys + [TARGET]].copy()
+
     # Type cleaning
     for col in group_cols:
-        df[col] = df[col].astype(str)
-    df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime'], utc=True).dt.tz_localize(None).dt.floor('min')
+        temp_base[col] = temp_base[col].astype(str)
+    
+    temp_base['LTScheduledDatetime'] = pd.to_datetime(
+        temp_base['LTScheduledDatetime'], utc=True
+    ).dt.tz_localize(None).dt.floor('min')
+    merge_keys = group_cols + ['LTScheduledDatetime']
 
-    # Statistics calculation using STATISTICS_LIST
+    # stat comutation
+    aggregated_base = temp_base.groupby(merge_keys)[TARGET].mean().reset_index()
+
+    # Immediate RAM cleaning
+    del temp_base
+    gc.collect()
+
+
+    ### Lag columns generation using mapping to avoid memory issues
+    # Create dictionary mappings for each lag feature
+    lag_mappings = {}
+    
     for lag_name, offset in lags.items():
-        temp_df = (
-            df.groupby(group_cols + ['LTScheduledDatetime'])
-            .agg({TARGET: STATISTICS_LIST})
-            .reset_index()
-        )
-
-        # Avoid pandas multi-index.
-        temp_df.columns = group_cols + ['LTScheduledDatetime'] + STATISTICS_LIST
-
-        # Lag application
-        temp_df['LTScheduledDatetime'] = temp_df['LTScheduledDatetime'] + offset
+        new_col_name = f"{prefix}_lag_{lag_name}_raw"
         
-        # Re-aggregate, using min, the calculated statistics. Using 'mean' allow us to smooth the aggregation of the calculated statistics.
-        temp_df = (
-            temp_df.groupby(group_cols + ['LTScheduledDatetime'])
-            .agg({s: 'mean' for s in STATISTICS_LIST})
-            .reset_index()
-        )
-
-        # Rename the column associated to calculated stats. 
-        rename_dict = {
-            s: f"{'_'.join(group_cols)}_lag_{lag_name}_{s}" 
-            for s in STATISTICS_LIST
-        }
-        temp_df = temp_df.rename(columns=rename_dict)
-
-        # Merge with the main df : allow to retrieve the calculated stats in the main df.
-        df = pd.merge(
-            df, 
-            temp_df, 
-            on=group_cols + ['LTScheduledDatetime'], 
-            how='left'
-        )
+        # Create lag dataframe
+        lag_df = aggregated_base[merge_keys + [TARGET]].copy()
+        lag_df['LTScheduledDatetime'] = lag_df['LTScheduledDatetime'] + offset
+        lag_df = lag_df.rename(columns={TARGET: new_col_name})
+        lag_df[new_col_name] = lag_df[new_col_name].astype('float32')
         
-        # RAM cleaning
-        del temp_df
+        # Create a mapping dictionary (more memory-efficient than merge)
+        lag_df_dict = lag_df.set_index(merge_keys)[new_col_name].to_dict()
+        lag_mappings[new_col_name] = lag_df_dict
+        
+        del lag_df
         gc.collect()
+
+    ### Apply lag features using mapping (avoids Cartesian product)
+    for new_col_name, lag_dict in lag_mappings.items():
+        # Create tuple keys for lookup
+        if group_cols:
+            df[new_col_name] = df.apply(
+                lambda row: lag_dict.get(
+                    tuple([row[col] for col in group_cols] + [pd.to_datetime(row['LTScheduledDatetime']).floor('min')]),
+                    np.nan
+                ),
+                axis=1
+            ).astype('float32')
+        else:
+            df[new_col_name] = df.apply(
+                lambda row: lag_dict.get(
+                    (pd.to_datetime(row['LTScheduledDatetime']).floor('min'),),
+                    np.nan
+                ),
+                axis=1
+            ).astype('float32')
+    
+    # RAM cleaning
+    del aggregated_base
+    del lag_mappings
+    gc.collect()
 
     return df
 
@@ -180,42 +205,53 @@ def add_rolling_features(df: pd.DataFrame, group_cols: list, windows: dict) -> p
     - df: DataFrame with features 'LTScheduledDatetime' & TARGET.
     - group_cols: features used for grouping and aggregation.
     - windows: Dict ROLLING_CONFIG
-    """
-    # Sort, chornological order
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
-    
-    # Tempral index + df.copy
-    df_indexed = df.set_index('LTScheduledDatetime').sort_index()
-    
+    """   
+    # Smaller version of the df
+    merge_keys = group_cols + ['LTScheduledDatetime']
+    df_indexed = df[merge_keys + [TARGET]].copy()
+
+    # naming convention
+    prefix_base = "_".join(group_cols) if group_cols else "global"
     
     for name, window_size in windows.items():
-        # Group and slicing windows creation
-        # Most important argument
-        # closed='left' is crucial to avoid Data Leakage (use of unknow future feature = cheating)
-        rolling_group = (
-            df_indexed.groupby(group_cols)[TARGET]
-            .shift(1)   # the data of yesterday have to be used for tiomorrow's predictions (not today's data that aren't available yet)
-            .rolling(window=window_size, closed='left', min_periods=1)
+        # Distinction for the global case
+        if group_cols:
+            rolling_obj = df_indexed.groupby(group_cols)[TARGET]
+        else:
+            rolling_obj = df_indexed[TARGET]
+        
+        # Shift to avoid data leakage (using data at 't' - handle by "closed" = "left" - and 't-1' to make prediction for 't')
+        shifted_target = rolling_obj.shift(1)
+        
+        # Computation object
+        rolling_group = shifted_target.rolling(
+            window=window_size, 
+            closed='left', 
+            min_periods=1
         )
         
-        # Stats computation using .agg() method
-        temp_rolling_stats = rolling_group.agg(STATISTICS_LIST).reset_index()
+        # name
+        prefix = f"{prefix_base}_rolling_{name}"
         
-        # renamming of columns
-        prefix = f"{'_'.join(group_cols)}_rolling_{name}"
-        
+        # Main loop: stats computation
+        # linear complexity -> RAM friendly
         for stat in STATISTICS_LIST:
             col_name = f"{prefix}_{stat}"
-            # Use of .value to keep the same order of the original sorted df 
-            df[col_name] = temp_rolling_stats[stat].values
             
-            # float32 = RAM optimization
-            df[col_name] = df[col_name].astype('float32')
+            # Computation
+            res = rolling_group.agg(stat)
+            
+            # using float32 (RAM) -> df is sorted 
+            df[col_name] = res.values.astype('float32')
+            
+            # RAM cleaning
+            del res
+            gc.collect()
 
-        # RAM cleaning
-        del temp_rolling_stats
-        gc.collect()
-
+    # RAM cleaning
+    del df_indexed
+    gc.collect()
+    
     return df
 
 
@@ -231,52 +267,81 @@ def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D"
     - long_win: the length of the longest window
 
     """
-    # Sort + temporal indexation
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
-    df_indexed = df.set_index('LTScheduledDatetime').sort_index()
-        
-    # Aggration calculation (short and long window)
-    # same as add_rolling_features : close = 'left' + .shift(1) --> avoid to use unknown data and Data leakage.
-    short_rolling = (
-        df_indexed.groupby(group_cols)[TARGET]
-        .shift(1)
-        .rolling(window=short_win, closed='left', min_periods=1)
-        .agg(STATISTICS_LIST)
-        .reset_index()
-    )
+    # Create a copy and add an index column to track original positions
+    df_copy = df.copy()
+    df_copy['_row_idx'] = range(len(df_copy))
     
-    long_rolling = (
-        df_indexed.groupby(group_cols)[TARGET]
-        .shift(1)
-        .rolling(window=long_win, closed='left', min_periods=1)
-        .agg(STATISTICS_LIST)
-        .reset_index()
-    )
+    # Sort keys
+    sort_keys = group_cols + ['LTScheduledDatetime']
     
-    # New features creation
-    new_features = {}
-    prefix = f"{'_'.join(group_cols)}_trend_{short_win}_vs_{long_win}"
+    # Prepare data for calculation  
+    df_calc = df_copy[group_cols + ['LTScheduledDatetime', TARGET, '_row_idx']].copy()
+    df_calc = df_calc.sort_values(by=sort_keys).reset_index(drop=True)
     
-    for stat in STATISTICS_LIST:
-        s_values = short_rolling[stat].values
-        l_values = long_rolling[stat].values
+    # Naming convention
+    prefix_base = "_".join(group_cols) if group_cols else "global"
+    
+    # Store all trend features
+    trend_features = {}
+    
+    if group_cols:
+        # Calculate trends for each group
+        for _, group in df_calc.groupby(group_cols, sort=False):
+            group = group.set_index('LTScheduledDatetime')
+            shifted = group[TARGET].shift(1)
+            
+            short_roll = shifted.rolling(window=short_win, closed='left', min_periods=1)
+            long_roll = shifted.rolling(window=long_win, closed='left', min_periods=1)
+            
+            for stat in STATISTICS_LIST:
+                col_name = f"{prefix_base}_trend_{short_win}_vs_{long_win}_{stat}"
+                
+                s_values = short_roll.agg(stat).values
+                l_values = long_roll.agg(stat).values
+                
+                ratio = np.divide(
+                    s_values, 
+                    l_values, 
+                    out=np.ones_like(s_values, dtype='float32'), 
+                    where=(l_values > 0) & (l_values != np.nan)
+                )
+                
+                # Store with row indices as keys
+                for idx, val in zip(group['_row_idx'].values, ratio):
+                    if col_name not in trend_features:
+                        trend_features[col_name] = {}
+                    trend_features[col_name][idx] = val
+    else:
+        df_calc = df_calc.set_index('LTScheduledDatetime')
+        shifted = df_calc[TARGET].shift(1)
         
-        col_name = f"{prefix}_{stat}"
+        short_roll = shifted.rolling(window=short_win, closed='left', min_periods=1)
+        long_roll = shifted.rolling(window=long_win, closed='left', min_periods=1)
         
-        # Ratio calculation
-        new_features[col_name] = np.divide(
-            s_values, 
-            l_values, 
-            out=np.ones_like(s_values, dtype='float32'), 
-            where=l_values > 0
-        ).astype('float32')
-
-    # Add features to the main df using merging 
-    new_cols_df = pd.DataFrame(new_features, index=df.index)
-    df = pd.concat([df, new_cols_df], axis=1)
-
-    # cleaning
-    del short_rolling, long_rolling, new_features, new_cols_df
+        for stat in STATISTICS_LIST:
+            col_name = f"{prefix_base}_trend_{short_win}_vs_{long_win}_{stat}"
+            
+            s_values = short_roll.agg(stat).values
+            l_values = long_roll.agg(stat).values
+            
+            ratio = np.divide(
+                s_values, 
+                l_values, 
+                out=np.ones_like(s_values, dtype='float32'), 
+                where=(l_values > 0) & (l_values != np.nan)
+            )
+            
+            for idx, val in zip(df_calc['_row_idx'].values, ratio):
+                if col_name not in trend_features:
+                    trend_features[col_name] = {}
+                trend_features[col_name][idx] = val
+    
+    # Add trend features to the original dataframe
+    for col_name, values_dict in trend_features.items():
+        df[col_name] = [values_dict.get(i, np.nan) for i in range(len(df))]
+    
+    # RAM cleaning
+    del df_copy, df_calc
     gc.collect()
     
     return df
@@ -285,56 +350,90 @@ def add_trend_features(df: pd.DataFrame, group_cols: list, short_win: str = "7D"
 
 def add_lagged_rolling_features(df: pd.DataFrame, group_cols: list, lag: str, window: str, new_col_name: str) -> pd.DataFrame:
     """
-    Calculation of mobile stats. Lag those stats. 
-    => Allow to compute historical trend.
-
-    Params:
-    - df: DataFrame with features 'LTScheduledDatetime' & TARGET.
-    - group_cols: features used for grouping and aggregation.
-    - lag: the date lag to center the window
-    - window: the number of day of aggregation to compute statistics.
-    - new_col_name : the new feature name created.
-
+    Compute historical rolling stats (lagged and windowed) using mapping to avoid memory issues.
     """
-    # initialization - same as the previous functions
+    # Prepare base data
+    merge_keys = group_cols + ['LTScheduledDatetime']
+    temp_df = df[merge_keys + [TARGET]].copy()
+    temp_df['LTScheduledDatetime'] = pd.to_datetime(temp_df['LTScheduledDatetime']).dt.floor('min')
+    
+    # Type cleaning for group columns
+    for col in group_cols:
+        temp_df[col] = temp_df[col].astype(str)
+    
+    # Initial aggregation (1 row = 1 datetime per group)
+    base_grouped = temp_df.groupby(merge_keys)[TARGET].mean().reset_index()
+    base_grouped = base_grouped.sort_values(by=merge_keys).reset_index(drop=True)
+    
+    # Temporal index for rolling
+    base_indexed = base_grouped.set_index('LTScheduledDatetime')
+    
+    # Global case distinction - creation of the rolling object
+    if group_cols:
+        rolling_obj = base_indexed.groupby(group_cols)[TARGET]
+    else:
+        rolling_obj = base_indexed[TARGET]
+        
+    # Naming convention
+    prefix = new_col_name if new_col_name else ("_".join(group_cols) if group_cols else "global")
+    
+    # Compute stats using mapping approach
+    stat_mappings = {}
+    
+    for stat in STATISTICS_LIST:
+        # Compute centered rolling stats
+        stat_series = rolling_obj.rolling(window=window, min_periods=1, center=True).agg(stat)
+        
+        col_name = f"{prefix}_{stat}"
+        current_stat_df = stat_series.reset_index()
+        
+        # Apply lag to datetime
+        current_stat_df['LTScheduledDatetime'] = current_stat_df['LTScheduledDatetime'] + pd.to_timedelta(lag)
+        
+        # Convert to float32 and rename
+        current_stat_df[TARGET] = current_stat_df[TARGET].astype('float32')
+        current_stat_df.rename(columns={TARGET: col_name}, inplace=True)
+        
+        # Create mapping dictionary
+        stat_dict = current_stat_df.set_index(merge_keys)[col_name].to_dict()
+        stat_mappings[col_name] = stat_dict
+        
+        del stat_series
+        del current_stat_df
+        gc.collect()
+    
+    # Apply lagged rolling features using mapping (avoids Cartesian product)
+    df = df.copy()
     df['LTScheduledDatetime'] = pd.to_datetime(df['LTScheduledDatetime']).dt.floor('min')
-    df = df.sort_values(by=group_cols + ['LTScheduledDatetime']).reset_index(drop=True)
-    df_temp = df.set_index('LTScheduledDatetime').sort_index()
+    for col in group_cols:
+        df[col] = df[col].astype(str)
     
+    # Drop existing columns to avoid duplicates
+    cols_to_drop = [c for c in stat_mappings.keys() if c in df.columns]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
     
-    #Stats computation using aggregation
-    # center=True allow to center the window: +/- (window/2) around the lag.
-    # note that the stats is compute for each row, the lag is done only after this step.
-    rolling_gen = (
-        df_temp.groupby(group_cols)[TARGET]
-        .rolling(window=window, min_periods=1, center=True)
-        .agg(STATISTICS_LIST)
-        .reset_index()
-    )
+    # Apply features using mapping for each stat
+    for col_name, stat_dict in stat_mappings.items():
+        if group_cols:
+            df[col_name] = df.apply(
+                lambda row: stat_dict.get(
+                    tuple([row[col] for col in group_cols] + [pd.to_datetime(row['LTScheduledDatetime']).floor('min')]),
+                    np.nan
+                ),
+                axis=1
+            ).astype('float32')
+        else:
+            df[col_name] = df.apply(
+                lambda row: stat_dict.get(
+                    (pd.to_datetime(row['LTScheduledDatetime']).floor('min'),),
+                    np.nan
+                ),
+                axis=1
+            ).astype('float32')
     
-    # Lag - date lag using the lag param.
-    rolling_gen['LTScheduledDatetime'] = rolling_gen['LTScheduledDatetime'] + pd.to_timedelta(lag)
-    
-    # Security : re-aggregation if dates are fusionning.
-    stats_df = (
-        rolling_gen.groupby(group_cols + ['LTScheduledDatetime'])[STATISTICS_LIST]
-        .mean()
-        .reset_index()
-    )
-    
-    # Rename features
-    rename_dict = {s: f"{new_col_name}_{s}" for s in STATISTICS_LIST}
-    stats_df = stats_df.rename(columns=rename_dict)
-    
-    # RAM optimization
-    for col in rename_dict.values():
-        stats_df[col] = stats_df[col].astype('float32')
-    
-    # Merge with the main df.
-    df = pd.merge(df, stats_df, on=group_cols + ['LTScheduledDatetime'], how='left')
-    
-    # RAM cleaning
-    del rolling_gen, stats_df
+    del temp_df, base_grouped, base_indexed
+    del stat_mappings
     gc.collect()
     
     return df
@@ -370,153 +469,123 @@ def add_interaction_features(df: pd.DataFrame, base_col: str, feature_pattern: s
         
         # Security about size of the vectors
         if feat_vals.ndim > 1:
-            feat_vals = feat_vals[:, 0]
-        else:
             feat_vals = feat_vals.flatten()
+        
+        # Interaction computation (simple multiplication)
+        interaction_values = base_vals * feat_vals
+        
+        # Adding a new feature in the dataframe
+        df[new_col_name] = interaction_values.astype('float32')
+    
+    return df
 
-        # Computation (vect * vect)
-        if base_vals.shape[0] == feat_vals.shape[0]:
-            new_interactions[new_col_name] = base_vals * feat_vals
-        else:
-            logger.warning(f"Saut de la colonne {col} : dimensions incompatibles.")
 
-    if not new_interactions:
+def add_momentum_features(df: pd.DataFrame, group_cols: list) -> pd.DataFrame:
+    """
+    Momentum features allow the model to understand 'the market evolution'.
+    It compares the same amount between different temporal dimensions/scales.
+    Example: ratio of (mean of last 7 days) / (mean of last 30 days)
+    """
+    # Naming convention
+    prefix_base = "_".join(group_cols) if group_cols else "global"
+    
+    # Only create momentum if we have rolling features
+    pattern = f"{prefix_base}_rolling_"
+    rolling_cols = [c for c in df.columns if pattern in c and "_mean" in c]
+    
+    if len(rolling_cols) < 2:
         return df
-
-    # df creation
-    new_df = pd.DataFrame(new_interactions, index=df.index)
     
-    # concatenation + index management 
-    try:
-        # If clean index
-        df = pd.concat([df, new_df], axis=1)
-    except ValueError:
-        # If "duplicate labels", synchronization using 'reset_index'
-        logger.warning(f"Index dupliqués détectés lors de l'interaction {feature_pattern}. Correction en cours...")
-        df = df.reset_index(drop=True)
-        new_df.index = df.index
-        df = pd.concat([df, new_df], axis=1)
+    # Extract window names from column names
+    windows = []
+    for col in rolling_cols:
+        # Extract window name: "prefix_rolling_WINDOW_mean"
+        parts = col.split('_')
+        for i, part in enumerate(parts):
+            if part == 'rolling' and i + 1 < len(parts):
+                windows.append(parts[i + 1])
+                break
+    
+    windows = list(set(windows))
+    
+    # Create momentum features comparing pairs of windows
+    momentum_config = [
+        ("week", "month"),
+        ("month", "quarter"),
+        ("quarter", "semester"),
+        ("semester", "year")
+    ]
+    
+    for short_win, long_win in momentum_config:
+        short_col = f"{prefix_base}_rolling_{short_win}_mean"
+        long_col = f"{prefix_base}_rolling_{long_win}_mean"
+        
+        if short_col in df.columns and long_col in df.columns:
+            new_col_name = f"{prefix_base}_momentum_{short_win}_vs_{long_win}"
+            df[new_col_name] = (df[short_col] / df[long_col].replace(0, np.nan)).astype('float32')
     
     return df
 
 
 
-def add_momentum_features(df: pd.DataFrame, short_term_pattern: str, long_term_pattern: str, suffix: str = "div") -> pd.DataFrame:
+def add_features(df):
     """
-    Computation of dynamic ratio between 2 existing features.res existantes.
-    Ex : short_term_pattern='rolling_7D', long_term_pattern='rolling_30D'
-
-    Params:
-    - df: DataFrame with features 'LTScheduledDatetime' & TARGET.
-    - short_term_pattern: to identify the corresponding feature
-    - long_term_pattern: to identify the corresponding feature
-    - suffix : a 'str' indication for the feature name construction.
-
+    Main function to add all features to the dataset.
+    This orchestrates all feature engineering functions.
     """
-    # column identification - same col, but with different temporal dimension.
-    new_momentum = {}
     
-    for stat in STATISTICS_LIST:
-        col_short = [c for c in df.columns if short_term_pattern in c and c.endswith(f'_{stat}')]
-        col_long = [c for c in df.columns if long_term_pattern in c and c.endswith(f'_{stat}')]
-        
-        # Iteration over correspondances
-        for s_col in col_short:
-            # Search for the long_pattern corresponding to the short one
-            l_col = s_col.replace(short_term_pattern, long_term_pattern)
-            
-            if l_col in df.columns:
-                new_col_name = f"MOM_{s_col}_{suffix}_{long_term_pattern}"
-                
-                from typing import cast
-                import numpy as np
-                import numpy.typing as npt
-
-                # Explicit extractaction to a NDArray (type is important)
-                l_values = cast(npt.NDArray[np.float32], df[l_col].values.astype(np.float32))
-                s_values = cast(npt.NDArray[np.float32], df[s_col].values.astype(np.float32))
-
-                condition_mask = l_values > 0
-
-                # ratio calculation
-                new_momentum[new_col_name] = np.divide(
-                    s_values, 
-                    l_values, 
-                    out=np.ones_like(s_values), 
-                    where=condition_mask
-                )
-
-    # Concatenation
-    if new_momentum:
-        new_df = pd.DataFrame(new_momentum, index=df.index)
-        df = pd.concat([df, new_df], axis=1)
-    else:
-        logger.warning(f"No correspondances between {short_term_pattern} & {long_term_pattern}")
-        
-    return df
-
-
-
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Main function to add new features. 
-    Note: Order is critical (Momentum must come after Rolling/Lag).
-    """
-    # Security : Delete duplicates index
-    df = df.reset_index(drop=True)
-
-    ### Date related features
+    # 1. Date related features
     logger.info("Add of date related features")
-    df = date_columns_creation(df=df)
+    df = date_columns_creation(df)
+    
+    # 2. Lag, rolling, trend, lagged rolling, and interaction features for each grouping level
+    ITERATION_GROUPS = [[]] + [[col] for col in COLUMN_LIST_BASE]
+    for group in ITERATION_GROUPS:
+        group_desc = "_".join(group) if group else "global"
+        logger.info(f"Processing features for group: {group_desc}")
 
-    for col in COLUMN_LIST_BASE:
+            
+        # Sort, chronological order
+        df = df.sort_values(by=group + ['LTScheduledDatetime']).reset_index(drop=True)
+
         ### Lag features
-        df = add_lag_features(df, group_cols=[col], lags=CUSTOM_LAGS)
+        df = add_lag_features(df, group_cols=group, lags=CUSTOM_LAGS)
 
         ### Rolling features (recent rolling stats)
-        df = add_rolling_features(df, group_cols=[col], windows=ROLLING_CONFIG)
+        df = add_rolling_features(df, group_cols=group, windows=ROLLING_CONFIG)
 
         ### Lagged rolling features (historic rolling stats)
         for config_name, config in ROLLING_LAGS_CONFIG.items():
+            current_new_col_name = f"{group_desc}_{config_name}"
             df = add_lagged_rolling_features(
-                df, 
-                group_cols=[col], 
-                lag=config["lag"], 
-                window=config["window"], 
-                new_col_name=f"{col}_{config_name}"
+                df=df,
+                group_cols=group,
+                lag=config["lag"],
+                window=config["window"],
+                new_col_name=current_new_col_name
             )
-
-        ### Trend features
-        for short_win, long_win in TREND_CONFIG:
-            df = add_trend_features(df, group_cols=[col], short_win=short_win, long_win=long_win)
-
-    logger.info('Dedicated features added')
         
-    ### Momentum features
-    # recent momentum
-    df = add_momentum_features(df, 
-                                short_term_pattern='rolling_week', 
-                                long_term_pattern='rolling_month', 
-                                suffix="accel")
+        ### Momentum features
+        df = add_momentum_features(df=df, group_cols=group)
 
-    # middle term momentum
-    df = add_momentum_features(df, 
-                                short_term_pattern='rolling_month', 
-                                long_term_pattern='rolling_quarter', 
-                                suffix="month_ratio")
+    logger.info("Dedicated features added (Global + Categorical)")
+
+    # 3. Interaction features (cross features) - use rolling mean features
+    df = add_interaction_features(df=df, base_col="NbOfSeats", feature_pattern="_mean")
+    logger.info("Interaction features added")
     
-    # long term momentum
-    df = add_momentum_features(df, 
-                                short_term_pattern='rolling_quarter', 
-                                long_term_pattern='rolling_year', 
-                                suffix="season_ratio")
-
-    logger.info('Momentum features added')
-
-    ### 6. Interaction features ("NbSeats" * calculated means)
-    df = add_interaction_features(df, base_col="NbOfSeats", feature_pattern="_mean")
-    logger.info('Interaction features added')
-
+    # RAM cleaning
+    gc.collect()
+    
     return df
 
 
+
+
+
+### Test purposes
+# if __name__=="__main__":
+#     data = pd.read_csv('data/main.csv')
+#     data = data.loc[:1000, :]
+#     df = add_features(df=data)
+#     df.to_csv('test.csv', encoding='utf-8')

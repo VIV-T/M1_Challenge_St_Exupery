@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 root = Path(__file__).parent.parent.parent
 DATA_FOLDER_PATH = os.path.join(root, "data")
-DATA_FILENAME = os.path.join(DATA_FOLDER_PATH, "main.csv")
+# DATA_FILENAME = os.path.join(DATA_FOLDER_PATH, "main.csv")
+DATA_FILENAME = os.path.join(DATA_FOLDER_PATH, "result_predictions_04-01.csv")
 CONFIG_FOLDER_PATH = os.path.join(root, "config")
 
 
@@ -63,11 +64,9 @@ column_list = """
     etl_origin, 
     """
 
-
 additional_condition = """
-ORDER BY LTScheduledDatetime DESC
+    ORDER BY LTScheduledDatetime DESC
 """
-
 
 # ------------- Utils -------------
 
@@ -93,15 +92,15 @@ def query_bigquery_table(project_id: str, dataset_id: str, table_id: str, servic
 
         ### Way 1 to query the database.        
         # Initialise le client BigQuery
-        # client = bigquery.Client(project=project_id)
-        # query_job = client.query(query)
-        # # Récupère les résultats
-        # df_res = query_job.to_dataframe(create_bqstorage_client=False)
+        client = bigquery.Client(project=project_id)
+        query_job = client.query(query)
+        # Récupère les résultats
+        df_res = query_job.to_dataframe(create_bqstorage_client=False)
 
         ### Way 2 to query the database. 
         # Query execution using "pandas_gbq".
-        logger.info(f"Query execution: \n{query}\n")
-        df_res = pd.DataFrame(pandas_gbq.read_gbq(query, project_id=project_id))
+        # logger.info(f"Query execution: \n{query}\n")
+        # df_res = pd.DataFrame(pandas_gbq.read_gbq(query, project_id=project_id))
 
         return df_res
 
