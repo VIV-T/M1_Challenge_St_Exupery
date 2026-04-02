@@ -41,6 +41,7 @@ By anticipating traffic peaks, the airport can:
 M1_Challenge_St_Exupery/
 ├── config/                  # GCP Credentials and project configuration
 ├── data/                    # Storage for raw, preprocessed
+├── data_analysis/           # Data used for analysis (predictions/results of 04/01)
 ├── models/                  # Serialized model weights (.pkl)
 ├── output/                  # Hourly predictions per day, planning management of staff
 └── scripts/
