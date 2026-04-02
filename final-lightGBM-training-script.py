@@ -89,4 +89,4 @@ print("R2  :", r2)
 # 8. SAVE MODEL
 # =========================================
 joblib.dump(model, "/content/drive/MyDrive/lgbm_with_lags_v6_semantic.pkl")
-print("💾 Model saved")
+print(" Model saved")
