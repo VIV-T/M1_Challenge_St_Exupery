@@ -13,7 +13,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 PATH = "/content/drive/MyDrive/final_dataset_preprocessed_v6_semantic.csv"
 df = pd.read_csv(PATH, parse_dates=["UTCExternalDate"])
 df = df.sort_values("UTCExternalDate").reset_index(drop=True)
-print("✅ Loaded:", df.shape)
+print(" Loaded:", df.shape)
 
 # =========================================
 # 2. FEATURES
@@ -80,7 +80,7 @@ mae = mean_absolute_error(y_test, y_pred)
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 r2 = r2_score(y_test, y_pred)
 
-print("\n📊 RESULTS")
+print("\n RESULTS")
 print("MAE :", mae)
 print("RMSE:", rmse)
 print("R2  :", r2)
