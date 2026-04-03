@@ -2,3 +2,5 @@
 /config/
 /data/*.csv
 */__pycache__
+models/
+*.pkl
